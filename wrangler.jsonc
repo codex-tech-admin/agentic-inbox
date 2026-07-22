@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "agentic-inbox",
+	"name": "raihan-agentic-inbox",
 	"compatibility_date": "2025-11-28",
 	"main": "./workers/app.ts",
 	"observability": {
@@ -13,20 +13,27 @@
 		// Production deploys must also define POLICY_AUD and TEAM_DOMAIN.
 		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
 		// The worker now fails closed outside local development if Access is not configured.
-		"DOMAINS": "example.com",
-		"EMAIL_ADDRESSES": []
+		"DOMAINS": "raihanrazi.com",
+		"EMAIL_ADDRESSES": ["contact@raihanrazi.com"]
 	},
+	"routes": [
+		{
+			"pattern": "inbox.raihanrazi.com",
+			"custom_domain": true
+		}
+	],
 	"send_email": [
 		{
 			"name": "EMAIL",
-			"remote": true
+			"remote": true,
+			"allowed_sender_addresses": ["contact@raihanrazi.com"]
 		}
 	],
 	"r2_buckets": [
 		{
 			"binding": "BUCKET",
-			"bucket_name": "agentic-inbox",
-			"preview_bucket_name": "agentic-inbox"
+			"bucket_name": "raihan-agentic-inbox",
+			"preview_bucket_name": "raihan-agentic-inbox"
 		}
 	],
 	"ai": {
