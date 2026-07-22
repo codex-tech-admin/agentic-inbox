@@ -47,8 +47,16 @@ export async function sendEmail(
 		subject: params.subject,
 	};
 
-	if (params.html) message.html = params.html;
-	if (params.text) message.text = params.text;
+	// Empty bodies are valid email, but Cloudflare Email Service requires at
+	// least one non-empty content field. Use an invisible transport placeholder
+	// while callers continue storing and displaying the body as genuinely empty.
+	const hasVisibleBody = Boolean(params.html?.trim() || params.text?.trim());
+	if (!hasVisibleBody) {
+		message.text = "\u200B";
+	} else {
+		if (params.html !== undefined) message.html = params.html;
+		if (params.text !== undefined) message.text = params.text;
+	}
 	if (params.cc) message.cc = params.cc;
 	if (params.bcc) message.bcc = params.bcc;
 	if (params.replyTo) message.replyTo = params.replyTo;

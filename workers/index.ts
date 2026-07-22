@@ -66,6 +66,17 @@ function boolQuery(c: AppContext, key: string): boolean | undefined {
 // -- App & middleware -----------------------------------------------
 
 const app = new Hono<MailboxContext>();
+app.onError((error, c) => {
+	if (error instanceof z.ZodError) {
+		return c.json({
+			error: error.issues[0]?.message || "Invalid request",
+			issues: error.issues,
+		}, 400);
+	}
+
+	console.error("Unhandled API error:", error);
+	return c.json({ error: "Internal server error" }, 500);
+});
 app.use("/api/*", cors({
 	origin: (origin) => {
 		// Same-origin requests have no Origin header — allow them.
