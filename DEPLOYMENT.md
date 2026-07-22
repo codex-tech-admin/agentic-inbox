@@ -60,3 +60,17 @@ npx wrangler triggers deploy
 
 The separate trigger step ensures the custom-domain route is applied when the
 React Router build uses its redirected Wrangler configuration.
+
+## Automatic production deployments
+
+Cloudflare Workers Builds is connected directly to
+`codex-tech-admin/agentic-inbox`.
+
+- Production branch: `main`
+- Build command: `npm run build`
+- Deploy command: `npx wrangler deploy`
+- Root directory: `/`
+- Non-production branch builds: disabled
+
+Merging a pull request into `main` now starts a production build and deploys the
+result to the existing `raihan-agentic-inbox` Worker.
