@@ -29,6 +29,7 @@ import {
 import { verifyDraft } from "./ai";
 import { sendEmail } from "../email-sender";
 import { Folders } from "../../shared/folders";
+import { attachmentObjectKeys } from "./trash";
 import type { Env } from "../types";
 
 // ── Type casts for DO methods not on the base stub type ────────────
@@ -369,8 +370,8 @@ export async function toolDiscardDraft(
 	if (email.folder_id !== Folders.DRAFT) {
 		return { error: "Cannot discard: email is not a draft" };
 	}
-	await stub.deleteEmail(draftId);
-	return { status: "discarded", draftId };
+	await stub.moveEmail(draftId, Folders.TRASH);
+	return { status: "trashed", draftId };
 }
 
 // ── delete_email ───────────────────────────────────────────────────
@@ -381,9 +382,19 @@ export async function toolDeleteEmail(
 	emailId: string,
 ) {
 	const stub = getMailboxStub(env, mailboxId);
-	const result = await stub.deleteEmail(emailId);
-	if (result === null) {
+	const email = (await stub.getEmail(emailId)) as { folder_id?: string } | null;
+	if (!email) {
 		return { error: "Email not found", emailId };
+	}
+	if (email.folder_id !== Folders.TRASH) {
+		await stub.moveEmail(emailId, Folders.TRASH);
+		return { status: "trashed", emailId };
+	}
+	const attachments = await stub.deleteEmail(emailId);
+	if (attachments && attachments.length > 0) {
+		await env.BUCKET.delete(attachmentObjectKeys(
+			attachments.map((attachment) => ({ emailId, ...attachment })),
+		));
 	}
 	return { status: "deleted", emailId };
 }

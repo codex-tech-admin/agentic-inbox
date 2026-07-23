@@ -2,7 +2,7 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Button, Pagination, Tooltip } from "@cloudflare/kumo";
+import { Button, Pagination, Tooltip, useKumoToastManager } from "@cloudflare/kumo";
 import {
 	ArchiveIcon,
 	ArrowBendUpLeftIcon,
@@ -25,6 +25,7 @@ import MailboxSplitView from "~/components/MailboxSplitView";
 import { getSnippetText } from "~/lib/utils";
 import {
 	useDeleteEmail,
+	useEmptyTrash,
 	useEmails,
 	useMarkThreadRead,
 	useUpdateEmail,
@@ -76,7 +77,7 @@ const FOLDER_EMPTY_STATES: Record<
 		icon: <TrashIcon size={48} weight="thin" className="text-kumo-subtle" />,
 		title: "Trash is empty",
 		description:
-			"Deleted emails will appear here. You can restore them or permanently delete them.",
+			"Deleted emails stay here for 30 days. You can restore them, delete them permanently, or empty Trash now.",
 	},
 };
 
@@ -158,6 +159,9 @@ export default function EmailListRoute() {
 	const updateEmail = useUpdateEmail();
 	const markThreadRead = useMarkThreadRead();
 	const deleteEmail = useDeleteEmail();
+	const emptyTrash = useEmptyTrash();
+	const toastManager = useKumoToastManager();
+	const isTrashFolder = folder === Folders.TRASH;
 
 	const params = useMemo(
 		() => ({
@@ -214,11 +218,21 @@ export default function EmailListRoute() {
 		e.preventDefault();
 		e.stopPropagation();
 		if (mailboxId) {
-			const confirmed = window.confirm("Are you sure you want to delete this email?");
-			if (!confirmed) return;
-			deleteEmail.mutate({ mailboxId, id: emailId });
+			deleteEmail.mutate(
+				{ mailboxId, id: emailId },
+				{ onSuccess: () => toastManager.add({ title: isTrashFolder ? "Email permanently deleted" : "Email moved to Trash" }) },
+			);
 			if (selectedEmailId === emailId) closePanel();
 		}
+	};
+
+	const handleEmptyTrash = () => {
+		if (!mailboxId) return;
+		emptyTrash.mutate(
+			{ mailboxId },
+			{ onSuccess: (result) => toastManager.add({ title: `Trash emptied (${result.deletedCount} deleted)` }) },
+		);
+		closePanel();
 	};
 
 	const handleRefresh = () => {
@@ -279,6 +293,17 @@ export default function EmailListRoute() {
 						{folderName}
 					</h1>
 					<div className="flex items-center gap-1">
+						{isTrashFolder && totalCount > 0 && (
+							<Button
+								variant="destructive"
+								size="sm"
+								icon={<TrashIcon size={16} />}
+								onClick={handleEmptyTrash}
+								loading={emptyTrash.isPending}
+							>
+								Empty Trash
+							</Button>
+						)}
 						{totalCount > 0 && (
 							<span className="text-sm text-kumo-subtle mr-2 hidden sm:inline">
 								{totalCount} conversation{totalCount !== 1 ? "s" : ""}
@@ -422,14 +447,14 @@ export default function EmailListRoute() {
 													aria-label={email.read ? "Mark unread" : "Mark read"}
 												/>
 											</Tooltip>
-											<Tooltip content="Delete" asChild>
+											<Tooltip content={isTrashFolder ? "Delete permanently" : "Move to Trash"} asChild>
 												<Button
 													variant="ghost"
 													shape="square"
 													size="sm"
 													icon={<TrashIcon size={14} />}
 													onClick={(e) => handleDelete(e, email.id)}
-													aria-label="Delete"
+													aria-label={isTrashFolder ? "Delete permanently" : "Move to Trash"}
 												/>
 											</Tooltip>
 										</div>

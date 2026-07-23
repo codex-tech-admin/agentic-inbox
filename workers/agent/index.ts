@@ -88,7 +88,7 @@ You can ONLY draft emails. You do NOT have the ability to send emails directly.
 **Don't paste draft contents into the chat.** The drafts are saved via tools - the operator can see them in the Drafts folder. In your chat message, just briefly say what you drafted (e.g. "Drafted a reply to Tim"). Don't duplicate the full email body in the chat.
 
 ## Draft Management
-Use discard_draft to delete drafts that the operator rejects or that are no longer needed.`;
+Use discard_draft to move drafts that the operator rejects or no longer needs to Trash. Trash is retained for 30 days unless the operator empties it manually.`;
 
 /**
  * Fetch the custom system prompt for a mailbox from its R2 settings.

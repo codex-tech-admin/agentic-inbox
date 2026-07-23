@@ -166,6 +166,13 @@ export const mailboxMigrations: Migration[] = [
             CREATE INDEX IF NOT EXISTS idx_emails_folder_id ON emails(folder_id);
             CREATE INDEX IF NOT EXISTS idx_emails_date ON emails(date);
             CREATE INDEX IF NOT EXISTS idx_emails_folder_date ON emails(folder_id, date DESC);
-        `,
+		`,
+	},
+	{
+		name: "9_add_trash_retention",
+		sql: txn(`
+            ALTER TABLE emails ADD COLUMN trashed_at TEXT;
+            CREATE INDEX idx_emails_trash_retention ON emails(folder_id, trashed_at);
+        `),
 	},
 ];

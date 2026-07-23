@@ -4,7 +4,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/durable-sqlite";
-import { eq, and, or, asc, desc, sql } from "drizzle-orm";
+import { eq, and, or, asc, desc, inArray, lte, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
@@ -642,11 +642,50 @@ export class MailboxDO extends DurableObject<Env> {
 
 		this.db
 			.update(schema.emails)
-			.set({ folder_id: folderId })
+			.set({
+				folder_id: folderId,
+				trashed_at: folderId === Folders.TRASH ? new Date().toISOString() : null,
+			})
 			.where(eq(schema.emails.id, id))
 			.run();
 
 		return true;
+	}
+
+	async deleteTrashEmails(olderThan?: string) {
+		const condition = olderThan
+			? and(
+				eq(schema.emails.folder_id, Folders.TRASH),
+				lte(schema.emails.trashed_at, olderThan),
+			)
+			: eq(schema.emails.folder_id, Folders.TRASH);
+		const trashEmails = this.db
+			.select({ id: schema.emails.id })
+			.from(schema.emails)
+			.where(condition)
+			.all();
+
+		if (trashEmails.length === 0) {
+			return { deletedCount: 0, attachments: [] };
+		}
+
+		const emailIds = trashEmails.map((email) => email.id);
+		const attachments = this.db
+			.select({
+				emailId: schema.attachments.email_id,
+				id: schema.attachments.id,
+				filename: schema.attachments.filename,
+			})
+			.from(schema.attachments)
+			.where(inArray(schema.attachments.email_id, emailIds))
+			.all();
+
+		this.db
+			.delete(schema.emails)
+			.where(inArray(schema.emails.id, emailIds))
+			.run();
+
+		return { deletedCount: emailIds.length, attachments };
 	}
 
 	// ── Search (raw SQL — dynamic condition builder) ───────────────

@@ -14,7 +14,7 @@ import {
 	stripHtml,
 	toEmailListValue,
 } from "~/lib/utils";
-import { useDeleteEmail, useForwardEmail, useReplyToEmail, useSaveDraft, useSendEmail } from "~/queries/emails";
+import { useForwardEmail, usePermanentlyDeleteEmail, useReplyToEmail, useSaveDraft, useSendEmail } from "~/queries/emails";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
@@ -170,7 +170,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const saveDraftMutation = useSaveDraft();
 	const replyMutation = useReplyToEmail();
 	const forwardMutation = useForwardEmail();
-	const deleteEmailMutation = useDeleteEmail();
+	const permanentlyDeleteEmailMutation = usePermanentlyDeleteEmail();
 
 	const [to, setTo] = useState("");
 	const [cc, setCc] = useState("");
@@ -255,7 +255,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 			if ((mode === "reply" || mode === "reply-all") && originalId) await replyMutation.mutateAsync({ mailboxId, emailId: originalId, email: emailData });
 			else if (mode === "forward" && originalId) await forwardMutation.mutateAsync({ mailboxId, emailId: originalId, email: emailData });
 			else await sendEmailMutation.mutateAsync({ mailboxId, email: emailData });
-			if (draftId) deleteEmailMutation.mutate({ mailboxId, id: draftId });
+			if (draftId) permanentlyDeleteEmailMutation.mutate({ mailboxId, id: draftId });
 			toastManager.add({ title: "Email sent!" });
 			onClose();
 		} catch (err: unknown) { const message = (err instanceof Error ? err.message : null) || "Failed to send email."; setError(message); toastManager.add({ title: message, variant: "error" }); }

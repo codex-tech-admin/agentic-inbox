@@ -13,7 +13,7 @@ import SingleMessageView from "~/components/email-panel/SingleMessageView";
 import ThreadMessage from "~/components/email-panel/ThreadMessage";
 import { splitEmailList, toEmailListValue } from "~/lib/utils";
 import api from "~/services/api";
-import { useDeleteEmail, useEmail, useMoveEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
+import { useDeleteEmail, useEmail, useMoveEmail, usePermanentlyDeleteEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -37,6 +37,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	};
 	const updateEmail = useUpdateEmail();
 	const deleteEmailMut = useDeleteEmail();
+	const permanentlyDeleteEmailMut = usePermanentlyDeleteEmail();
 	const moveEmailMut = useMoveEmail();
 	const sendEmailMut = useSendEmail();
 	const replyMut = useReplyToEmail();
@@ -51,6 +52,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 	const [previewImage, setPreviewImage] = useState<{ url: string; filename: string } | null>(null);
 	const isDraftFolder = folder === Folders.DRAFT;
+	const isTrashFolder = folder === Folders.TRASH;
 
 	const threadReplies = useMemo(() => {
 		if (!threadRepliesRaw || !email) return [];
@@ -89,7 +91,14 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 	const toggleStar = () => { if (mailboxId) updateEmail.mutate({ mailboxId, id: email.id, data: { starred: !email.starred } }); };
 	const handleMove = (folderId: string) => { if (mailboxId) { moveEmailMut.mutate({ mailboxId, id: email.id, folderId }); closePanel(); } };
-	const handleDelete = () => { if (mailboxId) { if (!window.confirm("Are you sure you want to delete this email?")) return; deleteEmailMut.mutate({ mailboxId, id: email.id }); closePanel(); } };
+	const handleDelete = () => {
+		if (!mailboxId) return;
+		deleteEmailMut.mutate(
+			{ mailboxId, id: email.id },
+			{ onSuccess: () => toastManager.add({ title: isTrashFolder ? "Email permanently deleted" : "Email moved to Trash" }) },
+		);
+		closePanel();
+	};
 
 	const handleEditDraft = (draftMsg?: Email) => {
 		const target = draftMsg || email;
@@ -100,9 +109,8 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	const handleDeleteDraft = async (draftMsg?: Email) => {
 		const target = draftMsg || email;
 		if (!mailboxId) return;
-		if (!window.confirm("Discard this draft?")) return;
 		deleteEmailMut.mutate({ mailboxId, id: target.id });
-		toastManager.add({ title: "Draft discarded" });
+		toastManager.add({ title: "Draft moved to Trash" });
 		if (target.id === emailId) closePanel();
 	};
 
@@ -128,7 +136,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				text: target.body ? target.body.replace(/<[^>]*>/g, "").trim() : "",
 			};
 			if (originalEmail) await replyMut.mutateAsync({ mailboxId, emailId: originalEmail.id, email: emailData }); else await sendEmailMut.mutateAsync({ mailboxId, email: emailData });
-			await deleteEmailMut.mutateAsync({ mailboxId, id: target.id });
+			await permanentlyDeleteEmailMut.mutateAsync({ mailboxId, id: target.id });
 			toastManager.add({ title: "Email sent!" });
 			if (isDraftFolder) closePanel();
 		} catch (err) {
@@ -173,6 +181,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				onMove={handleMove}
 				onViewSource={() => setSourceViewEmail(email)}
 				onDelete={handleDelete}
+				deleteLabel={isTrashFolder ? "Delete permanently" : "Move to Trash"}
 			/>
 
 			<EmailPanelHeader

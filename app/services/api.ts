@@ -120,7 +120,11 @@ const api = {
 	updateEmail: (mailboxId: string, id: string, data: unknown) =>
 		put<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, data),
 	deleteEmail: (mailboxId: string, id: string) =>
-		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`),
+		del<{ status: "trashed" | "deleted" }>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`),
+	permanentlyDeleteEmail: (mailboxId: string, id: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/permanent`),
+	emptyTrash: (mailboxId: string) =>
+		post<{ status: "emptied"; deletedCount: number }>(`/api/v1/mailboxes/${mailboxId}/trash/empty`),
 	moveEmail: (mailboxId: string, id: string, folderId: string) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/move`, { folderId }),
 	getThread: (mailboxId: string, threadId: string, opts?: { signal?: AbortSignal }) =>

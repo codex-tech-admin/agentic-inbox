@@ -16,6 +16,7 @@ import {
 	listMailboxes,
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
+import { attachmentObjectKeys } from "./lib/trash";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders } from "../shared/folders";
 import type { Env } from "./types";
@@ -254,10 +255,41 @@ app.put("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 
 app.delete("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 	const id = c.req.param("id")!;
+	const email = await c.var.mailboxStub.getEmail(id) as { folder_id?: string } | null;
+	if (!email) return c.json({ error: "Not found" }, 404);
+
+	if (email.folder_id !== Folders.TRASH) {
+		await c.var.mailboxStub.moveEmail(id, Folders.TRASH);
+		return c.json({ status: "trashed" });
+	}
+
+	const attachments = await c.var.mailboxStub.deleteEmail(id);
+	if (attachments && attachments.length > 0) {
+		await c.env.BUCKET.delete(attachmentObjectKeys(
+			attachments.map((attachment: any) => ({ emailId: id, ...attachment })),
+		));
+	}
+	return c.json({ status: "deleted" });
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/emails/:id/permanent", async (c: AppContext) => {
+	const id = c.req.param("id")!;
 	const attachments = await c.var.mailboxStub.deleteEmail(id);
 	if (attachments === null) return c.json({ error: "Not found" }, 404);
-	if (attachments.length > 0) await c.env.BUCKET.delete(attachments.map((att: any) => `attachments/${id}/${att.id}/${att.filename}`));
+	if (attachments.length > 0) {
+		await c.env.BUCKET.delete(attachmentObjectKeys(
+			attachments.map((attachment: any) => ({ emailId: id, ...attachment })),
+		));
+	}
 	return c.body(null, 204);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/trash/empty", async (c: AppContext) => {
+	const result = await c.var.mailboxStub.deleteTrashEmails();
+	if (result.attachments.length > 0) {
+		await c.env.BUCKET.delete(attachmentObjectKeys(result.attachments));
+	}
+	return c.json({ status: "emptied", deletedCount: result.deletedCount });
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/move", async (c: AppContext) => {
