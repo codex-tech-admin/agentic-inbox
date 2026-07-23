@@ -13,6 +13,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import type { EmailFull, EmailMetadata } from "../lib/schemas";
 import { verifyDraft, isPromptInjection } from "../lib/ai";
+import { classifyAutoDraft } from "../lib/auto-draft-policy";
 import {
 	getMailboxStub,
 	stripHtmlToText,
@@ -63,7 +64,9 @@ Write like a real person. Short, direct, flowing prose. Get to the point. Plain 
 
 **Agent Behavior Rules (CRITICAL):**
 - NEVER output meta-commentary about what you are doing (e.g. do not say "I am drafting a reply to Alex", "I checked the thread", etc).
-- When a new email arrives, your ONLY job is to call the \`draft_reply\` tool.
+- New-email automation is only appropriate for human messages that genuinely require a response. Never draft replies to application confirmations, automated status updates, rejections, verification messages, assessment notifications, no-reply senders, or informational mail.
+- If a new-email request does not need a reply after reviewing its full context, output exactly \`NO_REPLY\` and do not call any draft tool.
+- Otherwise, call the \`draft_reply\` tool.
 - DO NOT summarize the email. DO NOT explain your actions.
 - Output NOTHING except the tool call. If you must output text, it should ONLY be the literal draft text itself if tools fail.
 - Before drafting ANY reply, carefully read the full thread history.
@@ -323,8 +326,9 @@ export class EmailAgent extends AIChatAgent<any> {
 	}
 
 	/**
-	 * Called when a new email arrives. Reads it, loads the thread,
-	 * drafts a response, and saves it to the Drafts folder.
+	 * Called when a new email arrives. Applies a deterministic reply-worthiness
+	 * gate before loading thread context or invoking AI, then drafts only when
+	 * the sender is genuinely asking for a response.
 	 */
 	async handleNewEmail(emailData: {
 		mailboxId: string;
@@ -335,17 +339,29 @@ export class EmailAgent extends AIChatAgent<any> {
 	}) {
 		const env = this.env as Env;
 		const workersai = createWorkersAI({ binding: env.AI });
-		const tools = createEmailTools(env, emailData.mailboxId);
-		const systemPrompt = await getSystemPrompt(env, emailData.mailboxId);
-
-		// Pre-read the email and thread so the agent has full context
-		// without needing to waste tool calls discovering it
+		// Read the new message first. Routine automated career mail exits here,
+		// before thread loading, prompt-injection scanning, or an AI invocation.
 		const stub = getMailboxStub(env, emailData.mailboxId);
 
 		let emailBody = "";
 		let threadContext = "";
 		try {
 			const email = (await stub.getEmail(emailData.emailId)) as EmailFull | null;
+			if (email?.body) {
+				emailBody = stripHtmlToText(email.body);
+			}
+
+			const decision = classifyAutoDraft({
+				mailboxId: emailData.mailboxId,
+				sender: emailData.sender,
+				subject: emailData.subject,
+				body: emailBody,
+			});
+			if (!decision.shouldDraft) {
+				console.log(`Skipping auto-draft for ${emailData.emailId}: ${decision.category} (${decision.reason})`);
+				return { status: "skipped", ...decision };
+			}
+
 			if (email?.body) {
 				const isInjection = await isPromptInjection(env.AI, email.body);
 				if (isInjection) {
@@ -373,7 +389,6 @@ export class EmailAgent extends AIChatAgent<any> {
 					return;
 				}
 				
-				emailBody = stripHtmlToText(email.body);
 			}
 
 		// Load thread for conversation context
@@ -420,10 +435,14 @@ export class EmailAgent extends AIChatAgent<any> {
 			}
 		}
 		} catch (e) {
-			console.warn("Pre-read failed, agent will use tools:", (e as Error).message);
+			console.warn("Auto-draft pre-read failed; skipping safely:", (e as Error).message);
+			return { status: "skipped", category: "no_reply_needed", reason: "Could not safely determine whether a reply is needed." };
 		}
 
-		let autoPrompt = `A new email just arrived. Draft an appropriate response using draft_reply.
+		const tools = createEmailTools(env, emailData.mailboxId);
+		const systemPrompt = await getSystemPrompt(env, emailData.mailboxId);
+
+		let autoPrompt = `A new email passed a conservative reply-worthiness gate. Review its full context. If it genuinely needs a response, draft an appropriate response using draft_reply. If it does not need a reply, output exactly NO_REPLY and do not call a draft tool.
 
 Email details:
 - Mailbox: ${emailData.mailboxId}
@@ -448,7 +467,7 @@ This is the first message in the thread (no prior conversation).`;
 
 		autoPrompt += `
 
-Based on the email content and thread context above, draft a reply using draft_reply. If you need more context, use get_thread with thread ID "${emailData.threadId}".`;
+Based on the email content and thread context above, draft a reply using draft_reply only when a response is genuinely required. Otherwise output exactly NO_REPLY. If you need more context, use get_thread with thread ID "${emailData.threadId}".`;
 
 		// Fresh context for auto-draft -- don't include prior chat history
 		// to avoid confusing the model with old messages and tool calls
@@ -475,8 +494,9 @@ Based on the email content and thread context above, draft a reply using draft_r
 			const draftToolCalled = result.steps.some((step) =>
 				step.toolCalls.some((tc) => tc.toolName === "draft_reply" || tc.toolName === "draft_email"),
 			);
+			const modelDeclinedDraft = /^NO_REPLY\b/i.test(result.text.trim());
 
-			if (!draftToolCalled && result.text.trim()) {
+			if (!draftToolCalled && !modelDeclinedDraft && result.text.trim()) {
 				// Model generated a draft inline as text -- verify with AI
 				const sanitizedText = await verifyDraft(env.AI, result.text.trim());
 				if (!sanitizedText) {
@@ -508,6 +528,11 @@ Based on the email content and thread context above, draft a reply using draft_r
 					);
 					// Inline text saved as draft
 				}
+			}
+
+			if (!draftToolCalled && modelDeclinedDraft) {
+				console.log(`Model confirmed no reply is needed for ${emailData.emailId}.`);
+				return { status: "skipped", category: "no_reply_needed", reason: "Full-context review determined no reply was needed." };
 			}
 
 			// Persist the conversation into the agent's chat history
