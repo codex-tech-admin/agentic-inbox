@@ -89,6 +89,7 @@ describe("calendar response API", () => {
 			from: { email: "contact@raihanrazi.com", name: "Raihan Razi" },
 			subject: "Accepted: Test interview",
 		});
+		expect(delivered.headers).not.toHaveProperty("Content-Class");
 		const replyBytes = Uint8Array.from(atob(delivered.attachments[0].content), (character) => character.charCodeAt(0));
 		const replyIcs = new TextDecoder().decode(replyBytes).replace(/\r\n[ \t]/g, "");
 		expect(replyIcs).toContain("METHOD:REPLY");

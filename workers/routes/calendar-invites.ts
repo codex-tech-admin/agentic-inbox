@@ -120,10 +120,7 @@ export async function handleCalendarResponse(c: AppContext) {
 	const html = `<p>${escapeHtml(text)}</p>`;
 	const { originalMsgId, references, threadId } = buildReferencesChain(email);
 	const { messageId, outgoingMessageId } = generateMessageId(fromDomain);
-	const headers = {
-		...buildThreadingHeaders(originalMsgId, references),
-		"Content-Class": "urn:content-classes:calendarmessage",
-	};
+	const headers = buildThreadingHeaders(originalMsgId, references);
 	const outboundAttachment = {
 		content: encodedIcs,
 		filename: "response.ics",
