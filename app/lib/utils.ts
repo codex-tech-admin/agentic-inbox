@@ -11,6 +11,7 @@
 import DOMPurify from "dompurify";
 import { formatQuotedDate } from "shared/dates";
 import type { Attachment } from "~/types";
+import { isCalendarAttachment } from "shared/calendar";
 
 export {
 	formatListDate,
@@ -197,7 +198,9 @@ export function rewriteInlineImages(
 }
 
 export function getNonInlineAttachments(attachments?: Attachment[]): Attachment[] {
-	return attachments?.filter((attachment) => attachment.disposition !== "inline") ?? [];
+	return attachments?.filter(
+		(attachment) => attachment.disposition !== "inline" && !isCalendarAttachment(attachment),
+	) ?? [];
 }
 
 export function getAttachmentUrl(

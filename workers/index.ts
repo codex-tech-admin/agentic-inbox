@@ -18,7 +18,9 @@ import {
 import { SendEmailRequestSchema } from "./lib/schemas";
 import { attachmentObjectKeys } from "./lib/trash";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
+import { handleCalendarResponse, handleGetCalendarInvite } from "./routes/calendar-invites";
 import { Folders } from "../shared/folders";
+import { isCalendarAttachment } from "../shared/calendar";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
 
@@ -313,6 +315,8 @@ app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/read", async (c: AppCon
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/reply", handleReplyEmail);
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/forward", handleForwardEmail);
+app.get("/api/v1/mailboxes/:mailboxId/emails/:id/calendar-invite", handleGetCalendarInvite);
+app.post("/api/v1/mailboxes/:mailboxId/emails/:id/calendar-response", handleCalendarResponse);
 
 // -- Folders --------------------------------------------------------
 
@@ -363,8 +367,11 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:emailId/attachments/:attachmentId"
 	if (!obj) return c.json({ error: "Attachment file not found" }, 404);
 	const headers = new Headers();
 	headers.set("Content-Type", attachment.mimetype);
-	const sanitized = attachment.filename.replace(/[\x00-\x1f"\\]/g, "_");
-	headers.set("Content-Disposition", `attachment; filename="${sanitized}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`);
+	const downloadFilename = isCalendarAttachment(attachment) && attachment.filename === "untitled"
+		? "invite.ics"
+		: attachment.filename;
+	const sanitized = downloadFilename.replace(/[\x00-\x1f"\\]/g, "_");
+	headers.set("Content-Disposition", `attachment; filename="${sanitized}"; filename*=UTF-8''${encodeURIComponent(downloadFilename)}`);
 	return new Response(obj.body, { headers });
 });
 

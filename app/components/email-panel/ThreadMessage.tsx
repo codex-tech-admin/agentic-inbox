@@ -14,6 +14,7 @@ import {
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
 import MessageAddressDetails from "~/components/email-panel/MessageAddressDetails";
+import CalendarInviteCard from "~/components/email-panel/CalendarInviteCard";
 import {
 	formatDetailDate,
 	formatShortDate,
@@ -202,6 +203,7 @@ export default function ThreadMessage({
 						)}
 						autoSize
 					/>
+					<CalendarInviteCard email={email} mailboxId={mailboxId} />
 				</div>
 
 				{isDraft && (onSendDraft || onEditDraft || onDeleteDraft) && (

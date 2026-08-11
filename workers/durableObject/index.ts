@@ -527,6 +527,15 @@ export class MailboxDO extends DurableObject<Env> {
 		return this.getEmail(id);
 	}
 
+	async setCalendarResponse(id: string, response: "accepted" | "tentative" | "declined") {
+		this.db
+			.update(schema.emails)
+			.set({ calendar_response: response })
+			.where(eq(schema.emails.id, id))
+			.run();
+		return this.getEmail(id);
+	}
+
 	async updateDraft(
 		id: string,
 		updates: {

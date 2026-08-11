@@ -29,6 +29,7 @@ export interface EmailMetadata {
 	thread_id?: string | null;
 	folder_id?: string | null;
 	snippet?: string | null;
+	calendar_response?: string | null;
 }
 
 export interface EmailFull extends EmailMetadata {

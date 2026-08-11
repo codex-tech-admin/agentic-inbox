@@ -40,6 +40,7 @@
 		"dompurify": "^3.4.12",
 		"drizzle-orm": "^0.45.2",
 		"hono": "^4.12.31",
+		"ical.js": "^2.2.1",
 		"isbot": "^5.1.27",
 		"jose": "^6.2.1",
 		"postal-mime": "^2.6.1",

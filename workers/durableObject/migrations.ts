@@ -181,4 +181,10 @@ export const mailboxMigrations: Migration[] = [
             ALTER TABLE emails ADD COLUMN previous_folder_id TEXT;
         `),
 	},
+	{
+		name: "11_add_calendar_response",
+		sql: txn(`
+            ALTER TABLE emails ADD COLUMN calendar_response TEXT;
+        `),
+	},
 ];
