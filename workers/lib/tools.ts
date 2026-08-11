@@ -282,7 +282,7 @@ export async function toolUpdateDraft(
 		bodyHtml?: string;
 	},
 ): Promise<
-	| { status: string; newDraftId: string; oldDraftId: string; message: string }
+	| { status: string; draftId: string; message: string }
 	| { error: string }
 > {
 	const stub = getMailboxStub(env, mailboxId);
@@ -291,37 +291,32 @@ export async function toolUpdateDraft(
 	if (!oldDraft) {
 		return { error: "Draft not found" };
 	}
-
-	// Verify the body BEFORE deleting the old draft to prevent data loss
-	const newDraftId = crypto.randomUUID();
-	const rawBody = params.bodyHtml ?? oldDraft.body ?? "";
-	const verifiedBody = await verifyDraft(env.AI, rawBody);
-
-	if (!verifiedBody) {
-		return { error: "Draft verification failed — keeping existing draft unchanged. Please try again." };
+	if (oldDraft.folder_id !== Folders.DRAFT) {
+		return { error: "Email is not a draft" };
 	}
 
-	await stub.deleteEmail(params.draftId);
-	await stub.createEmail(
-		Folders.DRAFT,
-		{
-			id: newDraftId,
-			subject: params.subject ?? oldDraft.subject,
-			sender: mailboxId.toLowerCase(),
-			recipient: (params.to ?? oldDraft.recipient).toLowerCase(),
-			date: new Date().toISOString(),
-			body: verifiedBody,
-			in_reply_to: oldDraft.in_reply_to || null,
-			email_references: oldDraft.email_references || null,
-			thread_id: oldDraft.thread_id || newDraftId,
-		},
-		[],
-	);
+	let updatedBody = oldDraft.body ?? "";
+	if (params.bodyHtml !== undefined) {
+		const verifiedBody = await verifyDraft(env.AI, params.bodyHtml);
+		if (!verifiedBody) {
+			return { error: "Draft verification failed — keeping existing draft unchanged. Please try again." };
+		}
+		updatedBody = verifiedBody;
+	}
+
+	const updatedDraft = await stub.updateDraft(params.draftId, {
+		subject: params.subject ?? oldDraft.subject ?? "",
+		recipient: (params.to ?? oldDraft.recipient ?? "").toLowerCase(),
+		body: updatedBody,
+		date: new Date().toISOString(),
+	});
+	if (!updatedDraft) {
+		return { error: "Draft not found" };
+	}
 
 	return {
 		status: "draft_updated",
-		newDraftId,
-		oldDraftId: params.draftId,
+		draftId: params.draftId,
 		message: "Draft updated in Drafts folder.",
 	};
 }

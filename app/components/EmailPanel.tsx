@@ -12,6 +12,7 @@ import EmailPanelToolbar from "~/components/email-panel/EmailPanelToolbar";
 import SingleMessageView from "~/components/email-panel/SingleMessageView";
 import ThreadMessage from "~/components/email-panel/ThreadMessage";
 import { splitEmailList, toEmailListValue } from "~/lib/utils";
+import { isThreadMessageVisibleInFolder } from "~/lib/thread-message-state";
 import api from "~/services/api";
 import { useDeleteEmail, useEmail, useMoveEmail, usePermanentlyDeleteEmail, useReplyToEmail, useSendEmail, useThreadReplies, useUpdateEmail } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
@@ -61,8 +62,10 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 
 	const allMessages = useMemo(() => {
 		if (!email) return [];
-		return [email, ...threadReplies].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-	}, [email, threadReplies]);
+		return [email, ...threadReplies]
+			.filter((message) => isThreadMessageVisibleInFolder(message, folder))
+			.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+	}, [email, threadReplies, folder]);
 
 	// Reset expanded state only when the selected email changes, not on every refetch.
 	// Using allMessages as a dependency would reset user expand/collapse state on background refetches.

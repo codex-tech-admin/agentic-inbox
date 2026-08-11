@@ -9,6 +9,7 @@ import type { SQL } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
+import { getMovedEmailFolderState } from "../lib/email-folder-state";
 import { applyMigrations, mailboxMigrations } from "./migrations";
 
 /**
@@ -526,6 +527,37 @@ export class MailboxDO extends DurableObject<Env> {
 		return this.getEmail(id);
 	}
 
+	async updateDraft(
+		id: string,
+		updates: {
+			recipient: string;
+			subject: string;
+			body: string;
+			date: string;
+		},
+	) {
+		const draft = this.db
+			.select({ id: schema.emails.id })
+			.from(schema.emails)
+			.where(
+				and(
+					eq(schema.emails.id, id),
+					eq(schema.emails.folder_id, Folders.DRAFT),
+				),
+			)
+			.get();
+
+		if (!draft) return null;
+
+		this.db
+			.update(schema.emails)
+			.set(updates)
+			.where(eq(schema.emails.id, id))
+			.run();
+
+		return this.getEmail(id);
+	}
+
 	async markThreadRead(threadId: string) {
 		this.ctx.storage.sql.exec(
 			`UPDATE emails SET read = 1 WHERE thread_id = ? AND read = 0`,
@@ -640,12 +672,27 @@ export class MailboxDO extends DurableObject<Env> {
 
 		if (!folder) return false;
 
+		const email = this.db
+			.select({
+				folderId: schema.emails.folder_id,
+				previousFolderId: schema.emails.previous_folder_id,
+			})
+			.from(schema.emails)
+			.where(eq(schema.emails.id, id))
+			.get();
+
+		if (!email) return false;
+
+		const nextFolderState = getMovedEmailFolderState(
+			email.folderId,
+			email.previousFolderId,
+			folderId,
+			new Date().toISOString(),
+		);
+
 		this.db
 			.update(schema.emails)
-			.set({
-				folder_id: folderId,
-				trashed_at: folderId === Folders.TRASH ? new Date().toISOString() : null,
-			})
+			.set(nextFolderState)
 			.where(eq(schema.emails.id, id))
 			.run();
 

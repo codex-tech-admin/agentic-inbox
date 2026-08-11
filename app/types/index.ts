@@ -40,6 +40,7 @@ export interface Email {
 	email_references?: string | null;
 	message_id?: string | null;
 	raw_headers?: string | null;
+	previous_folder_id?: string | null;
 	attachments?: Attachment[];
 	snippet?: string | null;
 	// Thread aggregate fields (only present in threaded list view)
