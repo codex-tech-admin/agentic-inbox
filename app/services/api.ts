@@ -3,6 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import type { CalendarInvite, CalendarResponse } from "shared/calendar";
+import type { OutboundAttachment } from "shared/attachments";
 import type { Email, Folder, Mailbox } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -152,8 +153,10 @@ const api = {
 			in_reply_to?: string;
 			thread_id?: string;
 			draft_id?: string;
+			attachments?: OutboundAttachment[];
+			retain_attachment_ids?: string[];
 		},
-	) => post<{ draft_id: string }>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
+	) => post<Email>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
 	replyToEmail: (mailboxId: string, emailId: string, email: unknown) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/reply`, email),
 	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>

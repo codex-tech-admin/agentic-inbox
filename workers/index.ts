@@ -7,7 +7,11 @@ import { cors } from "hono/cors";
 import PostalMime from "postal-mime";
 import { z } from "zod";
 import { sendEmail } from "./email-sender";
-import { storeAttachments, type StoredAttachment } from "./lib/attachments";
+import {
+	selectDraftAttachments,
+	storeAttachments,
+	type StoredAttachment,
+} from "./lib/attachments";
 import {
 	validateSender,
 	SenderValidationError,
@@ -15,7 +19,11 @@ import {
 	buildThreadingHeaders,
 	listMailboxes,
 } from "./lib/email-helpers";
-import { SendEmailRequestSchema } from "./lib/schemas";
+import {
+	OutboundAttachmentsSchema,
+	SendEmailRequestSchema,
+	type AttachmentInfo,
+} from "./lib/schemas";
 import { attachmentObjectKeys } from "./lib/trash";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { handleCalendarResponse, handleGetCalendarInvite } from "./routes/calendar-invites";
@@ -43,6 +51,8 @@ const DraftBody = z.object({
 	in_reply_to: z.string().optional(),
 	thread_id: z.string().optional(),
 	draft_id: z.string().optional(),
+	attachments: OutboundAttachmentsSchema.optional(),
+	retain_attachment_ids: z.array(z.string().min(1)).optional(),
 });
 
 // -- Helpers --------------------------------------------------------
@@ -227,18 +237,121 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 
 app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
-	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = DraftBody.parse(await c.req.json());
+	const {
+		to,
+		cc,
+		bcc,
+		subject,
+		body,
+		in_reply_to,
+		thread_id,
+		draft_id,
+		attachments,
+		retain_attachment_ids,
+	} = DraftBody.parse(await c.req.json());
 	const stub = c.var.mailboxStub;
-	if (draft_id) await stub.deleteEmail(draft_id); // not atomic — create-then-delete would be safer
-	const messageId = crypto.randomUUID();
 	const now = new Date().toISOString();
-	await stub.createEmail(Folders.DRAFT, {
-		id: messageId, subject: subject || "", sender: mailboxId.toLowerCase(),
-		recipient: (to || "").toLowerCase(), cc: cc?.toLowerCase() || null, bcc: bcc?.toLowerCase() || null,
-		date: now, body, in_reply_to: in_reply_to || null, email_references: null,
-		thread_id: thread_id || in_reply_to || messageId,
-	}, []);
-	return c.json({ id: messageId, status: "draft", subject: subject || "", recipient: to || "", date: now }, 201);
+
+	if (draft_id) {
+		const currentDraft = await stub.getEmail(draft_id) as ({
+			folder_id?: string | null;
+			attachments?: AttachmentInfo[];
+		} | null);
+		if (!currentDraft || currentDraft.folder_id !== Folders.DRAFT) {
+			return c.json({ error: "Draft not found" }, 404);
+		}
+
+		const shouldReplaceAttachments =
+			attachments !== undefined || retain_attachment_ids !== undefined;
+		let replacementAttachments: StoredAttachment[] | undefined;
+		let removedAttachments: AttachmentInfo[] = [];
+		let newAttachments: StoredAttachment[] = [];
+
+		if (shouldReplaceAttachments) {
+			const selected = selectDraftAttachments(
+				draft_id,
+				currentDraft.attachments ?? [],
+				retain_attachment_ids,
+			);
+			if (selected.unknownIds.length > 0) {
+				return c.json({ error: "One or more retained attachments do not belong to this draft" }, 400);
+			}
+			removedAttachments = selected.removed;
+			newAttachments = await storeAttachments(c.env.BUCKET, draft_id, attachments);
+			replacementAttachments = [...selected.retained, ...newAttachments];
+		}
+
+		let updatedDraft;
+		try {
+			updatedDraft = await stub.updateDraft(draft_id, {
+				recipient: (to || "").toLowerCase(),
+				cc: cc?.toLowerCase() || null,
+				bcc: bcc?.toLowerCase() || null,
+				subject: subject || "",
+				body,
+				date: now,
+				in_reply_to: in_reply_to || null,
+				thread_id: thread_id || in_reply_to || draft_id,
+			}, replacementAttachments);
+		} catch (error) {
+			if (newAttachments.length > 0) {
+				await c.env.BUCKET.delete(attachmentObjectKeys(newAttachments.map((attachment) => ({
+					emailId: draft_id,
+					id: attachment.id,
+					filename: attachment.filename,
+				}))));
+			}
+			throw error;
+		}
+
+		if (!updatedDraft) {
+			if (newAttachments.length > 0) {
+				await c.env.BUCKET.delete(attachmentObjectKeys(newAttachments.map((attachment) => ({
+					emailId: draft_id,
+					id: attachment.id,
+					filename: attachment.filename,
+				}))));
+			}
+			return c.json({ error: "Draft not found" }, 404);
+		}
+
+		if (removedAttachments.length > 0) {
+			const removedObjectKeys = attachmentObjectKeys(removedAttachments.map((attachment) => ({
+				emailId: draft_id,
+				id: attachment.id,
+				filename: attachment.filename,
+			})));
+			c.executionCtx.waitUntil(
+				c.env.BUCKET.delete(removedObjectKeys)
+					.catch((error) => console.error("Failed to delete removed draft attachments:", error)),
+			);
+		}
+
+		return c.json(updatedDraft);
+	}
+
+	const messageId = crypto.randomUUID();
+	const attachmentData = await storeAttachments(c.env.BUCKET, messageId, attachments);
+	try {
+		await stub.createEmail(Folders.DRAFT, {
+			id: messageId, subject: subject || "", sender: mailboxId.toLowerCase(),
+			recipient: (to || "").toLowerCase(), cc: cc?.toLowerCase() || null, bcc: bcc?.toLowerCase() || null,
+			date: now, body, in_reply_to: in_reply_to || null, email_references: null,
+			thread_id: thread_id || in_reply_to || messageId,
+		}, attachmentData);
+	} catch (error) {
+		if (attachmentData.length > 0) {
+			await c.env.BUCKET.delete(attachmentObjectKeys(attachmentData.map((attachment) => ({
+				emailId: messageId,
+				id: attachment.id,
+				filename: attachment.filename,
+			}))));
+		}
+		throw error;
+	}
+	const savedDraft = await stub.getEmail(messageId);
+	if (!savedDraft) throw new Error("Failed to load saved draft");
+	return c.json(savedDraft, 201);
 });
 
 app.get("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {

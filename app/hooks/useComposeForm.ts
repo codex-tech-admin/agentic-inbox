@@ -17,6 +17,13 @@ import {
 import { useForwardEmail, usePermanentlyDeleteEmail, useReplyToEmail, useSaveDraft, useSendEmail } from "~/queries/emails";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
+import {
+	addLocalAttachments,
+	existingComposeAttachments,
+	serializeComposeAttachments,
+	serializeLocalAttachments,
+	type ComposeAttachment,
+} from "~/lib/outbound-attachments";
 
 function appendUniqueAddress(
 	addresses: string[],
@@ -178,11 +185,13 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const [showCcBcc, setShowCcBcc] = useState(false);
 	const [subject, setSubject] = useState("");
 	const [body, setBody] = useState("");
+	const [attachments, setAttachments] = useState<ComposeAttachment[]>([]);
+	const [currentDraftId, setCurrentDraftId] = useState<string | undefined>();
 	const [error, setError] = useState<string | null>(null);
 	const [isSavingDraft, setIsSavingDraft] = useState(false);
 	const [isSending, setIsSending] = useState(false);
 	const lastInitializedOptionsRef = useRef<typeof composeOptions | null>(null);
-	const isDraftEdit = !!composeOptions.draftEmail;
+	const isDraftEdit = !!composeOptions.draftEmail || !!currentDraftId;
 
 	const formTitle = useMemo(() => {
 		if (isDraftEdit) return "Edit Draft";
@@ -207,12 +216,26 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		setShowCcBcc(initialFields.showCcBcc);
 		setSubject(initialFields.subject);
 		setBody(initialFields.body);
+		setAttachments(existingComposeAttachments(composeOptions.draftEmail?.attachments));
+		setCurrentDraftId(composeOptions.draftEmail?.id);
 	}, [composeOptions, currentMailbox?.email, sigBlock]);
 
+	const handleAddAttachments = (files: File[]) => {
+		const result = addLocalAttachments(attachments, files);
+		setAttachments(result.attachments);
+		setError(result.error);
+	};
+
+	const handleRemoveAttachment = (id: string) => {
+		setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+		setError(null);
+	};
+
 	const handleSaveDraft = async () => {
-		if (!mailboxId || isSending) return; setIsSavingDraft(true); setError(null);
+		if (!mailboxId || isSavingDraft || isSending) return; setIsSavingDraft(true); setError(null);
 		try {
-			await saveDraftMutation.mutateAsync({ mailboxId, draft: {
+			const localAttachments = await serializeLocalAttachments(attachments);
+			const savedDraft = await saveDraftMutation.mutateAsync({ mailboxId, draft: {
 				to,
 				cc: cc || undefined,
 				bcc: bcc || undefined,
@@ -220,8 +243,14 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 				body,
 				in_reply_to: composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to || undefined,
 				thread_id: composeOptions.originalEmail?.thread_id || composeOptions.draftEmail?.thread_id || undefined,
-				draft_id: composeOptions.draftEmail?.id || undefined,
+				draft_id: currentDraftId,
+				attachments: localAttachments,
+				retain_attachment_ids: attachments
+					.filter((attachment) => attachment.kind === "existing")
+					.map((attachment) => attachment.id),
 			} });
+			setCurrentDraftId(savedDraft.id);
+			setAttachments(existingComposeAttachments(savedDraft.attachments));
 			toastManager.add({ title: "Draft saved!" });
 		}
 		catch (err: unknown) {
@@ -240,18 +269,26 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		const ccRecipients = splitEmailList(cc); const bccRecipients = splitEmailList(bcc);
 		const fromName = currentMailbox.settings?.fromName || currentMailbox.name;
 		const from = fromName && fromName !== currentMailbox.email ? { email: currentMailbox.email, name: fromName } : currentMailbox.email;
-		const emailData = {
-			to: toEmailListValue(toRecipients),
-			cc: toEmailListValue(ccRecipients),
-			bcc: toEmailListValue(bccRecipients),
-			from,
-			subject,
-			html: body,
-			text: htmlToPlainText(body),
-		};
-		const draftId = composeOptions.draftEmail?.id; const mode = composeOptions.mode; const originalId = composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to;
+		const draftId = currentDraftId;
+		const mode = composeOptions.mode;
+		const originalId = composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to;
 		setIsSending(true); toastManager.add({ title: "Sending email..." });
 		try {
+			const outboundAttachments = await serializeComposeAttachments(
+				attachments,
+				mailboxId,
+				draftId,
+			);
+			const emailData = {
+				to: toEmailListValue(toRecipients),
+				cc: toEmailListValue(ccRecipients),
+				bcc: toEmailListValue(bccRecipients),
+				from,
+				subject,
+				html: body,
+				text: htmlToPlainText(body),
+				attachments: outboundAttachments.length > 0 ? outboundAttachments : undefined,
+			};
 			if ((mode === "reply" || mode === "reply-all") && originalId) await replyMutation.mutateAsync({ mailboxId, emailId: originalId, email: emailData });
 			else if (mode === "forward" && originalId) await forwardMutation.mutateAsync({ mailboxId, emailId: originalId, email: emailData });
 			else await sendEmailMutation.mutateAsync({ mailboxId, email: emailData });
@@ -262,5 +299,5 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		finally { setIsSending(false); }
 	};
 
-	return { to, setTo, cc, setCc, bcc, setBcc, showCcBcc, setShowCcBcc, subject, setSubject, body, setBody, error, setError, isSavingDraft, isSending, formTitle, handleSaveDraft, handleSend, closeCompose, closePanel };
+	return { to, setTo, cc, setCc, bcc, setBcc, showCcBcc, setShowCcBcc, subject, setSubject, body, setBody, attachments, error, setError, isSavingDraft, isSending, formTitle, handleAddAttachments, handleRemoveAttachment, handleSaveDraft, handleSend, closeCompose, closePanel };
 }

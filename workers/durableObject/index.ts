@@ -540,10 +540,15 @@ export class MailboxDO extends DurableObject<Env> {
 		id: string,
 		updates: {
 			recipient: string;
+			cc?: string | null;
+			bcc?: string | null;
 			subject: string;
 			body: string;
 			date: string;
+			in_reply_to?: string | null;
+			thread_id?: string | null;
 		},
+		attachments?: AttachmentData[],
 	) {
 		const draft = this.db
 			.select({ id: schema.emails.id })
@@ -558,11 +563,23 @@ export class MailboxDO extends DurableObject<Env> {
 
 		if (!draft) return null;
 
-		this.db
-			.update(schema.emails)
-			.set(updates)
-			.where(eq(schema.emails.id, id))
-			.run();
+		this.ctx.storage.transactionSync(() => {
+			this.db
+				.update(schema.emails)
+				.set(updates)
+				.where(eq(schema.emails.id, id))
+				.run();
+
+			if (attachments !== undefined) {
+				this.db
+					.delete(schema.attachments)
+					.where(eq(schema.attachments.email_id, id))
+					.run();
+				if (attachments.length > 0) {
+					this.db.insert(schema.attachments).values(attachments).run();
+				}
+			}
+		});
 
 		return this.getEmail(id);
 	}
