@@ -13,12 +13,18 @@ import {
 } from "@phosphor-icons/react";
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import MessageAddressDetails from "~/components/email-panel/MessageAddressDetails";
+import CalendarInviteCard from "~/components/email-panel/CalendarInviteCard";
 import {
 	formatDetailDate,
 	formatShortDate,
 	rewriteInlineImages,
 	stripHtml,
 } from "~/lib/utils";
+import {
+	getThreadMessageState,
+	type ThreadMessageState,
+} from "~/lib/thread-message-state";
 import type { Email } from "~/types";
 
 interface ThreadMessageProps {
@@ -53,6 +59,19 @@ function Avatar({ isDraft, isSelf, sender }: { isDraft?: boolean; isSelf: boolea
 	);
 }
 
+function MessageStateBadge({ state }: { state: ThreadMessageState }) {
+	if (state === "received") return null;
+
+	const config = {
+		sent: { label: "Sent", variant: "success" as const },
+		draft: { label: "Draft", variant: "warning" as const },
+		discarded: { label: "Discarded", variant: "error" as const },
+		trash: { label: "Trash", variant: "error" as const },
+	}[state];
+
+	return <Badge variant={config.variant}>{config.label}</Badge>;
+}
+
 export default function ThreadMessage({
 	email,
 	mailboxId,
@@ -69,8 +88,21 @@ export default function ThreadMessage({
 	onPreviewImage,
 }: ThreadMessageProps) {
 	const isSelf = email.sender === mailboxEmail;
-	const containerClassName = `${!isLast ? "border-b border-kumo-line" : ""} ${isDraft ? "border-l-2 border-l-kumo-warning bg-kumo-warning/[0.02]" : ""}`;
-	const senderLabel = isDraft ? "Draft reply" : isSelf ? "You" : email.sender;
+	const messageState = getThreadMessageState(email);
+	const isDiscarded = messageState === "discarded" || messageState === "trash";
+	const stateClassName = isDraft
+		? "border-l-2 border-l-kumo-warning bg-kumo-warning/[0.02]"
+		: isDiscarded
+			? "border-l-2 border-l-kumo-error bg-kumo-danger-tint/20"
+			: "";
+	const containerClassName = `${!isLast ? "border-b border-kumo-line" : ""} ${stateClassName}`;
+	const senderLabel = messageState === "draft"
+		? "Draft reply"
+		: messageState === "discarded"
+			? "Discarded draft"
+			: isSelf
+				? "You"
+				: email.sender;
 
 	if (!isExpanded) {
 		return (
@@ -83,9 +115,12 @@ export default function ThreadMessage({
 					<Avatar isDraft={isDraft} isSelf={isSelf} sender={email.sender} />
 					<div className="flex-1 min-w-0">
 						<div className="flex items-center justify-between">
-							<span className="text-sm font-medium text-kumo-default truncate">
-								{senderLabel}
-							</span>
+							<div className="flex items-center gap-2 min-w-0">
+								<span className="text-sm font-medium text-kumo-default truncate">
+									{senderLabel}
+								</span>
+								<MessageStateBadge state={messageState} />
+							</div>
 							<span className="text-xs text-kumo-subtle shrink-0">
 								{formatDetailDate(email.date)}
 							</span>
@@ -103,7 +138,7 @@ export default function ThreadMessage({
 	return (
 		<div className={`group/thread-msg ${containerClassName}`}>
 			<div className="px-4 py-4 md:px-6">
-				<div className="flex items-center justify-between gap-3 mb-3">
+				<div className="flex items-center justify-between gap-3">
 					<div className="flex items-center gap-2.5 min-w-0">
 						<button
 							type="button"
@@ -120,9 +155,8 @@ export default function ThreadMessage({
 								<span className="text-sm font-medium text-kumo-default truncate">
 									{senderLabel}
 								</span>
-								{isDraft && <Badge variant="outline">Draft</Badge>}
+								<MessageStateBadge state={messageState} />
 							</div>
-							<div className="text-xs text-kumo-subtle">To: {email.recipient}</div>
 						</div>
 					</div>
 					<div className="flex items-center gap-1 shrink-0">
@@ -155,6 +189,9 @@ export default function ThreadMessage({
 						</button>
 					</div>
 				</div>
+				<div className="mb-3 ml-[42px] min-w-0">
+					<MessageAddressDetails email={email} />
+				</div>
 
 				<div className="md:ml-[42px]">
 					<EmailIframe
@@ -166,6 +203,7 @@ export default function ThreadMessage({
 						)}
 						autoSize
 					/>
+					<CalendarInviteCard email={email} mailboxId={mailboxId} />
 				</div>
 
 				{isDraft && (onSendDraft || onEditDraft || onDeleteDraft) && (

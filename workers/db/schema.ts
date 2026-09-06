@@ -30,6 +30,8 @@ export const emails = sqliteTable("emails", {
 	message_id: text("message_id"),
 	raw_headers: text("raw_headers"),
 	trashed_at: text("trashed_at"),
+	previous_folder_id: text("previous_folder_id"),
+	calendar_response: text("calendar_response"),
 });
 
 export const attachments = sqliteTable("attachments", {
