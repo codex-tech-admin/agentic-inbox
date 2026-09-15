@@ -175,4 +175,16 @@ export const mailboxMigrations: Migration[] = [
             CREATE INDEX idx_emails_trash_retention ON emails(folder_id, trashed_at);
         `),
 	},
+	{
+		name: "10_add_previous_folder",
+		sql: txn(`
+            ALTER TABLE emails ADD COLUMN previous_folder_id TEXT;
+        `),
+	},
+	{
+		name: "11_add_calendar_response",
+		sql: txn(`
+            ALTER TABLE emails ADD COLUMN calendar_response TEXT;
+        `),
+	},
 ];

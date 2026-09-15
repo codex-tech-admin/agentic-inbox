@@ -4,6 +4,8 @@
 
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import MessageAddressDetails from "~/components/email-panel/MessageAddressDetails";
+import CalendarInviteCard from "~/components/email-panel/CalendarInviteCard";
 import { formatDetailDate, rewriteInlineImages } from "~/lib/utils";
 import type { Email } from "~/types";
 
@@ -30,16 +32,18 @@ export default function SingleMessageView({
 							<div className="text-sm font-medium text-kumo-default truncate">
 								{email.sender}
 							</div>
-							<div className="text-xs text-kumo-subtle">To: {email.recipient}</div>
 						</div>
 					</div>
 					<span className="text-xs text-kumo-subtle shrink-0">
 						{formatDetailDate(email.date)}
 					</span>
 				</div>
+				<div className="ml-[46px] min-w-0">
+					<MessageAddressDetails email={email} />
+				</div>
 			</div>
 
-			<div className="flex-1 min-h-0">
+			<div className="flex-1 min-h-0 overflow-y-auto">
 				<EmailIframe
 					body={rewriteInlineImages(
 						email.body || "",
@@ -48,6 +52,9 @@ export default function SingleMessageView({
 						email.attachments,
 					)}
 				/>
+				<div className="px-4 pb-4 md:px-6">
+					<CalendarInviteCard email={email} mailboxId={mailboxId} />
+				</div>
 			</div>
 
 			<EmailAttachmentList

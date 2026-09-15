@@ -26,6 +26,7 @@ import {
 	toolSearchEmails,
 	toolDraftReply,
 	toolDraftEmail,
+	toolUpdateDraft,
 	toolMarkEmailRead,
 	toolMoveEmail,
 	toolDiscardDraft,
@@ -81,6 +82,8 @@ You can ONLY draft emails. You do NOT have the ability to send emails directly.
 
 - Use draft_reply to draft replies to existing emails
 - Use draft_email to draft new outbound emails
+- Use update_draft to edit or revise an existing draft. Never use draft_reply or draft_email to replace an existing draft.
+- When the operator asks to update, edit, revise, shorten, expand, or otherwise change a draft, find its exact draft ID in the Drafts folder and update that record in place.
 - The operator will review and send drafts from the UI - you cannot send them
 
 **CRITICAL: The draft body must contain ONLY the email text.** Never include agent commentary, status messages, meta-notes, markdown formatting, or anything that isn't part of the actual email in the draft body. No "Draft created.", no "---", no "**bold**", no "Here's the draft:", no separators. The body field is the literal email the recipient will read. Everything else goes in your chat message, not in the draft body.
@@ -110,7 +113,7 @@ async function getSystemPrompt(env: Env, mailboxId: string): Promise<string> {
 	return DEFAULT_SYSTEM_PROMPT;
 }
 
-function createEmailTools(env: Env, mailboxId: string) {
+export function createEmailTools(env: Env, mailboxId: string) {
 	return {
 		list_emails: defineTool({
 			description:
@@ -228,6 +231,34 @@ function createEmailTools(env: Env, mailboxId: string) {
 					body,
 					isPlainText: true,
 					runVerifyDraft: true,
+				});
+			},
+		}),
+
+		update_draft: defineTool({
+			description:
+				"Update an existing draft in place. Use this whenever the operator asks to edit, revise, shorten, expand, or otherwise change a saved draft. First use list_emails with folder='draft' to find the exact draft ID. Never create a replacement draft.",
+			parameters: z.object({
+				draftId: z.string().describe("The exact ID of the existing draft"),
+				to: z
+					.string()
+					.email()
+					.optional()
+					.describe("Updated recipient email address"),
+				subject: z.string().optional().describe("Updated subject line"),
+				body: z
+					.string()
+					.optional()
+					.describe(
+						"Updated plain text body. Omit to preserve the existing body.",
+					),
+			}),
+			execute: async ({ draftId, to, subject, body }): Promise<unknown> => {
+				return toolUpdateDraft(env, mailboxId, {
+					draftId,
+					to,
+					subject,
+					bodyHtml: body === undefined ? undefined : textToHtml(body),
 				});
 			},
 		}),

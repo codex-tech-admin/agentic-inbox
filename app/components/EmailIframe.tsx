@@ -26,6 +26,8 @@ interface EmailIframeProps {
  *   the opaque-origin sandbox cannot access anything useful.
  * - A strict CSP meta tag blocks external resource loads inside the
  *   iframe as a defense-in-depth layer.
+ * - Sanitized links are forced into isolated top-level tabs. Sender-supplied
+ *   targets cannot navigate either the inbox or the email iframe.
  */
 export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -65,6 +67,14 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 			ADD_ATTR: ["target"],
 			FORCE_BODY: true,
 		});
+
+		const emailBody = document.createElement("template");
+		emailBody.innerHTML = cleanBody;
+		for (const link of emailBody.content.querySelectorAll("a[href]")) {
+			link.setAttribute("target", "_blank");
+			link.setAttribute("rel", "noopener noreferrer");
+		}
+		const safeBody = emailBody.innerHTML;
 
 		const padding = autoSize ? "0" : "24px";
 
@@ -135,7 +145,7 @@ h1, h2, h3 { margin: 8px 0 4px; }
 ul, ol { padding-left: 20px; margin: 4px 0; }
 </style>
 </head>
-<body>${cleanBody}${heightScript}</body>
+<body>${safeBody}${heightScript}</body>
 </html>`;
 	}, [body, autoSize]);
 
@@ -144,7 +154,7 @@ ul, ol { padding-left: 20px; margin: 4px 0; }
 			ref={iframeRef}
 			className="block w-full border-0"
 			style={autoSize ? { height: `${height}px` } : { height: "100%" }}
-			sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation"
+			sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
 			title="Email content"
 		/>
 	);

@@ -8,13 +8,15 @@ export const queryKeys = {
 		all: ["mailboxes"] as const,
 		detail: (id: string) => ["mailboxes", id] as const,
 	},
-	emails: {
+		emails: {
 		list: (mailboxId: string, params: Record<string, string>) =>
 			["emails", mailboxId, params] as const,
 		detail: (mailboxId: string, emailId: string) =>
 			["emails", mailboxId, emailId] as const,
 		thread: (mailboxId: string, threadId: string) =>
 			["emails", mailboxId, "thread", threadId] as const,
+		calendarInvite: (mailboxId: string, emailId: string) =>
+			["emails", mailboxId, emailId, "calendar-invite"] as const,
 	},
 	folders: {
 		list: (mailboxId: string) => ["folders", mailboxId] as const,

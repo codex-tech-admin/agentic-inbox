@@ -25,6 +25,27 @@ describe("outbound email contract", () => {
 		})).not.toThrow();
 	});
 
+	it("accepts a valid PDF attachment and rejects too many attachments", () => {
+		const attachment = {
+			content: "cGRm",
+			filename: "cover-letter.pdf",
+			type: "application/pdf",
+			disposition: "attachment" as const,
+		};
+		const request = {
+			to: "recipient@example.com",
+			from: "sender@example.com",
+			subject: "Cover letter",
+			attachments: [attachment],
+		};
+
+		expect(SendEmailRequestSchema.parse(request).attachments).toEqual([attachment]);
+		expect(() => SendEmailRequestSchema.parse({
+			...request,
+			attachments: Array.from({ length: 11 }, () => attachment),
+		})).toThrow();
+	});
+
 	it("uses an invisible transport placeholder for Cloudflare Email Service", async () => {
 		const binding = {
 			send: vi.fn().mockResolvedValue({ messageId: "message-id" }),
