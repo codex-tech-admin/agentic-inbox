@@ -1,7 +1,10 @@
 # Raihan Agentic Inbox deployment
 
-This fork is deployed to Cloudflare as a standalone managed inbox for
-`contact@raihanrazi.com`.
+This fork is deployed to Cloudflare as a standalone managed inbox. It hosts two
+mailboxes:
+
+- `contact@raihanrazi.com` — Raihan Career Inbox
+- `hello@codexdigital.ai` — Codex Digital Enquiries
 
 ## Production resources
 
@@ -9,7 +12,9 @@ This fork is deployed to Cloudflare as a standalone managed inbox for
 - Custom domain: `inbox.raihanrazi.com`
 - R2 bucket: `raihan-agentic-inbox`
 - Durable Objects: `MailboxDO`, `EmailAgent`, and `EmailMCP`
-- Email Routing: exact-address rule for `contact@raihanrazi.com`
+- Email Routing: exact-address rules for `contact@raihanrazi.com` and
+  `hello@codexdigital.ai` (`worker:raihan-agentic-inbox`)
+- Email Sending: enabled for `raihanrazi.com` and `codexdigital.ai`
 - Cloudflare Access application: `Raihan Agentic Inbox`
 - Access administrator: `contact@codextech.com.au`
 - Human policy: `Raihan Inbox Admin` (`Allow`)
@@ -25,7 +30,24 @@ Production configuration lives in `wrangler.jsonc`. Cloudflare stores
 `POLICY_AUD` and `TEAM_DOMAIN` as Worker secrets; do not commit their values.
 
 The upstream MCP tools, including send and delete, remain enabled. The outbound
-email binding is restricted to `contact@raihanrazi.com` as the sender.
+email binding is restricted to `contact@raihanrazi.com` and
+`hello@codexdigital.ai` as senders.
+
+`DOMAINS` and `EMAIL_ADDRESSES` list every domain and mailbox address this
+Worker accepts. Adding a mailbox requires both: the address in
+`EMAIL_ADDRESSES`, then the mailbox record itself.
+
+## Codex Digital website enquiries
+
+The `codexdigital` Worker (separate repository, `codexdigital.ai`) handles
+`POST /api/contact` and sends the notification to `hello@codexdigital.ai` from
+`website@codexdigital.ai`, with `Reply-To` set to the enquirer. Mail then flows
+through the `hello@codexdigital.ai` routing rule into the Codex Digital
+Enquiries mailbox. Replying from this inbox answers the enquirer directly.
+
+Lead delivery therefore depends on the `EMAIL_ADDRESSES` value in this Worker's
+configuration. Do not remove `hello@codexdigital.ai` from that list while the
+website form is live.
 
 The career agent reads the REST API using Cloudflare Access service-token
 headers. The token value is stored outside Git in the career-agent state

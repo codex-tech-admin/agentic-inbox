@@ -13,8 +13,8 @@
 		// Production deploys must also define POLICY_AUD and TEAM_DOMAIN.
 		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
 		// The worker now fails closed outside local development if Access is not configured.
-		"DOMAINS": "raihanrazi.com",
-		"EMAIL_ADDRESSES": ["contact@raihanrazi.com"]
+		"DOMAINS": "raihanrazi.com,codexdigital.ai",
+		"EMAIL_ADDRESSES": ["contact@raihanrazi.com", "hello@codexdigital.ai"]
 	},
 	"routes": [
 		{
@@ -29,7 +29,7 @@
 		{
 			"name": "EMAIL",
 			"remote": true,
-			"allowed_sender_addresses": ["contact@raihanrazi.com"]
+			"allowed_sender_addresses": ["contact@raihanrazi.com", "hello@codexdigital.ai"]
 		}
 	],
 	"r2_buckets": [
