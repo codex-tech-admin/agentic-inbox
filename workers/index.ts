@@ -116,14 +116,48 @@ app.get("/api/v1/config", (c) => {
 	return c.json({ domains, emailAddresses });
 });
 
-// Temporary, token-protected raw MIME import used for the SponsoredFeeds mailbox migration.
-// This route is removed immediately after the one-time migration is verified.
-app.post("/api/internal/migrate-sponsoredfeeds-email", async (c) => {
-	const suppliedToken = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
-	if (!c.env.MIGRATION_TOKEN || suppliedToken !== c.env.MIGRATION_TOKEN) {
-		return c.json({ error: "Unauthorized" }, 401);
-	}
+// Temporary, Access-protected raw MIME import used for the SponsoredFeeds mailbox migration.
+// These routes are removed immediately after the one-time migration is verified.
+app.get("/api/internal/migrate-sponsoredfeeds-email", (c) => c.html(`<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>SponsoredFeeds migration</title></head>
+<body style="font:16px system-ui;max-width:680px;margin:64px auto;padding:0 24px">
+	<h1>SponsoredFeeds migration</h1>
+	<p>Select the exported email folder. Every .eml file will be imported once.</p>
+	<input id="files" type="file" accept=".eml,message/rfc822" webkitdirectory directory multiple>
+	<button id="import" type="button" style="display:block;margin-top:20px;padding:10px 16px">Import emails</button>
+	<pre id="progress" style="white-space:pre-wrap"></pre>
+	<script>
+		const files = document.querySelector('#files');
+		const button = document.querySelector('#import');
+		const progress = document.querySelector('#progress');
+		button.addEventListener('click', async () => {
+			button.disabled = true;
+			const emails = [...files.files].filter((file) => file.name.endsWith('.eml'));
+			let imported = 0;
+			let duplicates = 0;
+			for (const [index, file] of emails.entries()) {
+				progress.textContent = 'Importing ' + (index + 1) + ' of ' + emails.length + '…';
+				const response = await fetch('/api/internal/migrate-sponsoredfeeds-email', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'message/rfc822',
+						'X-Migration-Read': file.name === 'Make Gojiberry part of your workflow.eml' ? 'false' : 'true',
+					},
+					body: file,
+				});
+				const result = await response.json();
+				if (!response.ok) throw new Error(file.name + ': ' + (result.error || response.status));
+				if (result.status === 'imported') imported++;
+				if (result.status === 'duplicate') duplicates++;
+			}
+			progress.textContent = 'Complete: ' + imported + ' imported, ' + duplicates + ' duplicates.';
+		});
+	</script>
+</body>
+</html>`));
 
+app.post("/api/internal/migrate-sponsoredfeeds-email", async (c) => {
 	const mailboxId = "hello@sponsoredfeeds.com";
 	const rawEmail = await c.req.arrayBuffer();
 	if (rawEmail.byteLength <= 0 || rawEmail.byteLength > 25 * 1024 * 1024) {
