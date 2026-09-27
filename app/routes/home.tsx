@@ -155,11 +155,16 @@ export default function HomeRoute() {
 
 	const isConfigured = emailAddresses.length > 0;
 	const accounts = isConfigured
-		? emailAddresses.map((addr) => ({
-				id: addr,
-				email: addr,
-				name: addr.split("@")[0] || addr,
-			}))
+		? emailAddresses.map((addr) => {
+				const mailbox = mailboxes.find(
+					(candidate) => candidate.email.toLowerCase() === addr.toLowerCase(),
+				);
+				return {
+					id: addr,
+					email: addr,
+					name: mailbox?.settings?.fromName?.trim() || addr.split("@")[0] || addr,
+				};
+			})
 		: mailboxes;
 	const folderQueries = useQueries({
 		queries: accounts.map((account) => ({
