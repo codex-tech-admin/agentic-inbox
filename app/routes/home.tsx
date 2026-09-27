@@ -18,7 +18,7 @@ import {
 	PlusIcon,
 	TrashIcon,
 } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import api from "~/services/api";
@@ -28,6 +28,7 @@ import {
 	useMailboxes,
 } from "~/queries/mailboxes";
 import { queryKeys } from "~/queries/keys";
+import type { Folder } from "~/types";
 
 const mailboxThemes = [
 	{
@@ -160,6 +161,20 @@ export default function HomeRoute() {
 				name: addr.split("@")[0] || addr,
 			}))
 		: mailboxes;
+	const folderQueries = useQueries({
+		queries: accounts.map((account) => ({
+			queryKey: queryKeys.folders.list(account.id),
+			queryFn: () => api.listFolders(account.id) as Promise<Folder[]>,
+			staleTime: 30_000,
+		})),
+	});
+	const unreadByMailbox = new Map(
+		accounts.map((account, index) => [
+			account.id,
+			folderQueries[index]?.data?.find((folder) => folder.id === "inbox")
+				?.unreadCount ?? 0,
+		]),
+	);
 
 	const isLoading = !configData;
 
@@ -197,18 +212,32 @@ export default function HomeRoute() {
 						{accounts.map((account, idx) => {
 							const domain = account.email.split("@")[1] || account.email;
 							const theme = mailboxThemes[idx % mailboxThemes.length];
+							const unreadCount = unreadByMailbox.get(account.id) ?? 0;
 
 							return (
 								<RouterLink
 									key={account.id}
 									to={`/mailbox/${account.id}`}
-									aria-label={`Open ${account.email}`}
+									aria-label={`Open ${account.email}${unreadCount > 0 ? `, ${unreadCount} unread ${unreadCount === 1 ? "email" : "emails"}` : ""}`}
 									className="mailbox-card group relative flex min-h-36 items-center gap-4 overflow-hidden rounded-2xl border border-slate-200/90 bg-white/90 p-5 no-underline outline-none sm:gap-5 sm:p-6"
 								>
-									<div
-										className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-lg font-bold ring-1 sm:h-16 sm:w-16 sm:text-xl ${theme.avatar}`}
-									>
-										{account.name.charAt(0).toUpperCase()}
+									<div className="relative shrink-0">
+										<div
+											className={`flex h-14 w-14 items-center justify-center rounded-2xl text-lg font-bold ring-1 sm:h-16 sm:w-16 sm:text-xl ${theme.avatar}`}
+										>
+											{account.name.charAt(0).toUpperCase()}
+										</div>
+										{unreadCount > 0 && (
+											<>
+												<span
+													aria-hidden="true"
+													className="absolute -right-1 -top-1 h-4 w-4 rounded-full border-[3px] border-white bg-blue-500 shadow-sm"
+												/>
+												<span className="sr-only">
+													{unreadCount} unread {unreadCount === 1 ? "email" : "emails"}
+												</span>
+											</>
+										)}
 									</div>
 									<div className="min-w-0 flex-1">
 										<div className="truncate text-base font-semibold text-slate-950 sm:text-lg">

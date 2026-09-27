@@ -116,6 +116,98 @@ app.get("/api/v1/config", (c) => {
 	return c.json({ domains, emailAddresses });
 });
 
+// Temporary, token-protected raw MIME import used for the SponsoredFeeds mailbox migration.
+// This route is removed immediately after the one-time migration is verified.
+app.post("/api/internal/migrate-sponsoredfeeds-email", async (c) => {
+	const suppliedToken = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+	if (!c.env.MIGRATION_TOKEN || suppliedToken !== c.env.MIGRATION_TOKEN) {
+		return c.json({ error: "Unauthorized" }, 401);
+	}
+
+	const mailboxId = "hello@sponsoredfeeds.com";
+	const rawEmail = await c.req.arrayBuffer();
+	if (rawEmail.byteLength <= 0 || rawEmail.byteLength > 25 * 1024 * 1024) {
+		return c.json({ error: "Invalid email size" }, 400);
+	}
+
+	const parsedEmail = await new PostalMime().parse(rawEmail);
+	const allRecipients = (parsedEmail.to ?? [])
+		.map((recipient) => recipient.address?.toLowerCase())
+		.filter(Boolean) as string[];
+	if (!allRecipients.includes(mailboxId)) {
+		return c.json({ error: "Email is not addressed to the migration mailbox" }, 400);
+	}
+
+	const digest = await crypto.subtle.digest("SHA-256", rawEmail);
+	const messageId = `migration-${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(mailboxId));
+	if (await stub.getEmail(messageId)) {
+		return c.json({ status: "duplicate", id: messageId });
+	}
+
+	const attachmentData: StoredAttachment[] = [];
+	for (const [index, attachment] of (parsedEmail.attachments ?? []).entries()) {
+		const attachmentId = `${messageId}-${index + 1}`;
+		const filename = (attachment.filename || "untitled").replace(/[\/\\:*?"<>|\x00-\x1f]/g, "_");
+		await c.env.BUCKET.put(
+			`attachments/${messageId}/${attachmentId}/${filename}`,
+			attachment.content,
+		);
+		attachmentData.push({
+			id: attachmentId,
+			email_id: messageId,
+			filename,
+			mimetype: attachment.mimeType,
+			size: typeof attachment.content === "string"
+				? attachment.content.length
+				: attachment.content.byteLength,
+			content_id: attachment.contentId || null,
+			disposition: attachment.disposition || "attachment",
+		});
+	}
+
+	const extractMessageId = (value: string) => {
+		const match = value.match(/<([^>]+)>/);
+		return match ? match[1] : value.trim().split(/\s+/)[0];
+	};
+	const inReplyTo = parsedEmail.inReplyTo
+		? extractMessageId(parsedEmail.inReplyTo)
+		: null;
+	const emailReferences = parsedEmail.references
+		? parsedEmail.references.split(/\s+/).filter(Boolean).map(extractMessageId)
+		: [];
+	let threadId = emailReferences[0] || inReplyTo || messageId;
+	if (!inReplyTo && emailReferences.length === 0) {
+		const subjectThread = await (stub as any).findThreadBySubject(
+			parsedEmail.subject || "",
+			parsedEmail.from?.address || undefined,
+		);
+		if (subjectThread) threadId = subjectThread;
+	}
+
+	const parsedDate = parsedEmail.date ? new Date(parsedEmail.date) : null;
+	await stub.createEmail(Folders.INBOX, {
+		id: messageId,
+		subject: parsedEmail.subject || "",
+		sender: (parsedEmail.from?.address || "").toLowerCase(),
+		recipient: allRecipients.join(", "),
+		cc: (parsedEmail.cc ?? []).map((recipient) => recipient.address?.toLowerCase()).filter(Boolean).join(", ") || null,
+		bcc: (parsedEmail.bcc ?? []).map((recipient) => recipient.address?.toLowerCase()).filter(Boolean).join(", ") || null,
+		date: parsedDate && !Number.isNaN(parsedDate.getTime())
+			? parsedDate.toISOString()
+			: new Date().toISOString(),
+		body: parsedEmail.html || parsedEmail.text || "",
+		read: c.req.header("X-Migration-Read") !== "false",
+		in_reply_to: inReplyTo,
+		email_references: emailReferences.length > 0 ? JSON.stringify(emailReferences) : null,
+		thread_id: threadId,
+		message_id: parsedEmail.messageId ? extractMessageId(parsedEmail.messageId) : null,
+		raw_headers: JSON.stringify(parsedEmail.headers),
+	}, attachmentData);
+
+	return c.json({ status: "imported", id: messageId }, 201);
+});
+
 // -- Mailboxes ------------------------------------------------------
 
 app.get("/api/v1/mailboxes", async (c) => {
