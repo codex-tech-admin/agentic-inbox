@@ -97,7 +97,7 @@ export default function EmailPanelToolbar({
 				<>
 					<Tooltip content="Reply" side="bottom" asChild>
 						<Button
-							variant="ghost"
+							variant="primary"
 							shape="square"
 							size="sm"
 							icon={<ArrowBendUpLeftIcon size={18} />}

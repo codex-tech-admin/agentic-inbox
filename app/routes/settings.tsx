@@ -20,12 +20,16 @@ export default function SettingsRoute() {
 
 	const [displayName, setDisplayName] = useState("");
 	const [agentPrompt, setAgentPrompt] = useState("");
+	const [signatureEnabled, setSignatureEnabled] = useState(false);
+	const [signatureText, setSignatureText] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
 
 	useEffect(() => {
 		if (mailbox) {
 			setDisplayName(mailbox.settings?.fromName || mailbox.name || "");
 			setAgentPrompt(mailbox.settings?.agentSystemPrompt || "");
+			setSignatureEnabled(Boolean(mailbox.settings?.signature?.enabled));
+			setSignatureText(mailbox.settings?.signature?.text || "");
 		}
 	}, [mailbox]);
 
@@ -36,6 +40,11 @@ export default function SettingsRoute() {
 			...mailbox.settings,
 			fromName: displayName,
 			agentSystemPrompt: agentPrompt.trim() || undefined,
+			signature: {
+				...mailbox.settings?.signature,
+				enabled: signatureEnabled,
+				text: signatureText.trim(),
+			},
 		};
 		try {
 			await updateMailboxMutation.mutateAsync({ mailboxId, settings });
@@ -82,6 +91,33 @@ export default function SettingsRoute() {
 						/>
 						<Input label="Email" type="email" value={mailbox.email} disabled />
 					</div>
+				</div>
+
+				{/* Email Signature */}
+				<div className="rounded-lg border border-kumo-line bg-kumo-base p-5">
+					<div className="text-sm font-medium text-kumo-default mb-2">
+						Email Signature
+					</div>
+					<p className="text-xs text-kumo-subtle mb-4">
+						Add a simple text signature to new messages, replies, and forwards.
+					</p>
+					<label className="flex items-center gap-2 text-sm text-kumo-default mb-3 cursor-pointer">
+						<input
+							type="checkbox"
+							checked={signatureEnabled}
+							onChange={(event) => setSignatureEnabled(event.target.checked)}
+							className="h-4 w-4 rounded border-kumo-line accent-blue-600"
+						/>
+						<span>Add signature automatically</span>
+					</label>
+					<textarea
+						value={signatureText}
+						onChange={(event) => setSignatureText(event.target.value)}
+						placeholder={"Kind regards,\nYour name\nyourdomain.com"}
+						rows={4}
+						disabled={!signatureEnabled}
+						className="w-full resize-y rounded-lg border border-kumo-line bg-kumo-recessed px-3 py-2 text-sm text-kumo-default placeholder:text-kumo-subtle focus:outline-none focus:ring-1 focus:ring-kumo-ring disabled:cursor-not-allowed disabled:opacity-50"
+					/>
 				</div>
 
 				{/* Agent System Prompt */}

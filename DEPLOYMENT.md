@@ -1,10 +1,12 @@
 # Raihan Agentic Inbox deployment
 
-This fork is deployed to Cloudflare as a standalone managed inbox. It hosts two
+This fork is deployed to Cloudflare as a standalone managed inbox. It hosts four
 mailboxes:
 
 - `contact@raihanrazi.com` — Raihan Career Inbox
 - `hello@codexdigital.ai` — Codex Digital Enquiries
+- `hello@semanticlab.ai` — SemanticLab Inbox
+- `hello@sponsoredfeeds.com` — SponsoredFeeds Inbox
 
 ## Production resources
 
@@ -12,9 +14,11 @@ mailboxes:
 - Custom domain: `inbox.raihanrazi.com`
 - R2 bucket: `raihan-agentic-inbox`
 - Durable Objects: `MailboxDO`, `EmailAgent`, and `EmailMCP`
-- Email Routing: exact-address rules for `contact@raihanrazi.com` and
-  `hello@codexdigital.ai` (`worker:raihan-agentic-inbox`)
-- Email Sending: enabled for `raihanrazi.com` and `codexdigital.ai`
+- Email Routing: exact-address rules for `contact@raihanrazi.com`,
+  `hello@codexdigital.ai`, `hello@semanticlab.ai`, and
+  `hello@sponsoredfeeds.com` (`worker:raihan-agentic-inbox`)
+- Email Sending: enabled for `raihanrazi.com`, `codexdigital.ai`,
+  `semanticlab.ai`, and `sponsoredfeeds.com`
 - Cloudflare Access application: `Raihan Agentic Inbox`
 - Access administrator: `contact@codextech.com.au`
 - Human policy: `Raihan Inbox Admin` (`Allow`)
@@ -30,8 +34,8 @@ Production configuration lives in `wrangler.jsonc`. Cloudflare stores
 `POLICY_AUD` and `TEAM_DOMAIN` as Worker secrets; do not commit their values.
 
 The upstream MCP tools, including send and delete, remain enabled. The outbound
-email binding is restricted to `contact@raihanrazi.com` and
-`hello@codexdigital.ai` as senders.
+email binding is restricted to the four configured mailbox addresses as
+senders.
 
 `DOMAINS` and `EMAIL_ADDRESSES` list every domain and mailbox address this
 Worker accepts. Adding a mailbox requires both: the address in
