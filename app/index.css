@@ -6,6 +6,51 @@ body {
   margin: 0;
 }
 
+.mailbox-hub {
+  background-color: #f8fafc;
+  background-image:
+    radial-gradient(circle at 16% 18%, rgb(219 234 254 / 55%), transparent 31rem),
+    radial-gradient(circle at 84% 78%, rgb(237 233 254 / 52%), transparent 32rem);
+}
+
+.mailbox-card {
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 4%),
+    0 14px 36px -24px rgb(15 23 42 / 22%);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    background-color 180ms ease;
+}
+
+.mailbox-card:hover {
+  border-color: rgb(148 163 184 / 75%);
+  background-color: rgb(255 255 255 / 98%);
+  box-shadow:
+    0 2px 4px rgb(15 23 42 / 5%),
+    0 22px 46px -24px rgb(59 130 246 / 28%);
+  transform: translateY(-2px);
+}
+
+.mailbox-card:focus-visible {
+  border-color: rgb(59 130 246 / 70%);
+  box-shadow:
+    0 0 0 4px rgb(147 197 253 / 35%),
+    0 22px 46px -24px rgb(59 130 246 / 28%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mailbox-card,
+  .mailbox-card svg {
+    transition: none;
+  }
+
+  .mailbox-card:hover {
+    transform: none;
+  }
+}
+
 /* TipTap list styles */
 .ProseMirror ul {
   list-style-type: disc;
