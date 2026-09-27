@@ -120,7 +120,23 @@ app.get("/api/v1/config", (c) => {
 
 app.get("/api/v1/mailboxes", async (c) => {
 	const allMailboxes = await listMailboxes(c.env.BUCKET);
-	return c.json(allMailboxes.map((m) => ({ ...m, name: m.id })));
+	const mailboxesWithSettings = await Promise.all(
+		allMailboxes.map(async (mailbox) => {
+			const object = await c.env.BUCKET.get(`mailboxes/${mailbox.id}.json`);
+			const settings = object
+				? await object.json<Record<string, unknown>>()
+				: {};
+			const fromName = typeof settings.fromName === "string"
+				? settings.fromName.trim()
+				: "";
+			return {
+				...mailbox,
+				name: fromName || mailbox.id,
+				settings,
+			};
+		}),
+	);
+	return c.json(mailboxesWithSettings);
 });
 
 app.post("/api/v1/mailboxes", async (c) => {
