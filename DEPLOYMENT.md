@@ -1,12 +1,13 @@
 # Raihan Agentic Inbox deployment
 
-This fork is deployed to Cloudflare as a standalone managed inbox. It hosts four
+This fork is deployed to Cloudflare as a standalone managed inbox. It hosts five
 mailboxes:
 
 - `contact@raihanrazi.com` — Raihan Career Inbox
 - `hello@codexdigital.ai` — Codex Digital Enquiries
 - `hello@semanticlab.ai` — SemanticLab Inbox
 - `hello@sponsoredfeeds.com` — SponsoredFeeds Inbox
+- `codex-studio-test@sponsoredfeeds.com` — SponsoredFeeds app test identity
 
 ## Production resources
 
@@ -16,7 +17,8 @@ mailboxes:
 - Durable Objects: `MailboxDO`, `EmailAgent`, and `EmailMCP`
 - Email Routing: exact-address rules for `contact@raihanrazi.com`,
   `hello@codexdigital.ai`, `hello@semanticlab.ai`, and
-  `hello@sponsoredfeeds.com` (`worker:raihan-agentic-inbox`)
+  `hello@sponsoredfeeds.com`, and `codex-studio-test@sponsoredfeeds.com`
+  (`worker:raihan-agentic-inbox`)
 - Email Sending: enabled for `raihanrazi.com`, `codexdigital.ai`,
   `semanticlab.ai`, and `sponsoredfeeds.com`
 - Cloudflare Access application: `Raihan Agentic Inbox`
@@ -34,7 +36,7 @@ Production configuration lives in `wrangler.jsonc`. Cloudflare stores
 `POLICY_AUD` and `TEAM_DOMAIN` as Worker secrets; do not commit their values.
 
 The upstream MCP tools, including send and delete, remain enabled. The outbound
-email binding is restricted to the four configured mailbox addresses as
+email binding is restricted to the five configured mailbox addresses as
 senders.
 
 `DOMAINS` and `EMAIL_ADDRESSES` list every domain and mailbox address this
