@@ -18,7 +18,8 @@
 			"contact@raihanrazi.com",
 			"hello@codexdigital.ai",
 			"hello@semanticlab.ai",
-			"hello@sponsoredfeeds.com"
+			"hello@sponsoredfeeds.com",
+			"codex-studio-test@sponsoredfeeds.com"
 		]
 	},
 	"routes": [
@@ -38,7 +39,8 @@
 				"contact@raihanrazi.com",
 				"hello@codexdigital.ai",
 				"hello@semanticlab.ai",
-				"hello@sponsoredfeeds.com"
+				"hello@sponsoredfeeds.com",
+				"codex-studio-test@sponsoredfeeds.com"
 			]
 		}
 	],
