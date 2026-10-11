@@ -65,12 +65,15 @@ SponsoredFeeds web app permissions.
 3. Create the exact-address Email Routing rule (the catch-all remains disabled):
 
    ```sh
-   npx wrangler email routing rules create sponsoredfeeds.com \
+   npx --yes wrangler@4.149.0 email routing rules create sponsoredfeeds.com \
      --name "SponsoredFeeds demo inbox" \
      --match-type literal --match-field to \
      --match-value demo@sponsoredfeeds.com \
      --action-type worker --action-value raihan-agentic-inbox
    ```
+
+   The repository's pinned Wrangler version does not yet expose the Email
+   Routing CLI commands, so use the version shown for this step.
 
 4. Open the authenticated `https://inbox.raihanrazi.com/` mailbox hub. Its
    configured-address list creates the R2 mailbox record and Durable Object
