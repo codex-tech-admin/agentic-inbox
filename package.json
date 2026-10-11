@@ -16,7 +16,7 @@
 		"build": "react-router build",
 		"cf-typegen": "wrangler types",
 		"check": "npm test && npm run typecheck && npm run build && npm run check:deploy",
-		"check:deploy": "wrangler versions upload --dry-run && wrangler deploy --dry-run",
+		"check:deploy": "node scripts/assert-mailbox-config.mjs && wrangler versions upload --dry-run && wrangler deploy --dry-run",
 		"deploy": "npm run build && wrangler deploy",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
