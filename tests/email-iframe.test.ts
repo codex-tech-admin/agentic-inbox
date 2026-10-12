@@ -23,6 +23,45 @@ afterEach(async () => {
 });
 
 describe("EmailIframe", () => {
+	it("preserves embedded email styles while removing executable markup", async () => {
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+
+		await act(async () => {
+			root?.render(
+				createElement(EmailIframe, {
+					body: `<!doctype html>
+						<html>
+							<head>
+								<style>
+									.container { max-width: 560px; margin: 0 auto; }
+									@media (max-width: 600px) { .container { padding: 12px; } }
+								</style>
+								<script>window.parent.postMessage("unsafe", "*")</script>
+							</head>
+							<body class="email-shell" style="background: #f4f4f4" onload="alert('unsafe')">
+								<div class="container" onclick="alert('unsafe')">Styled email</div>
+								<a href="javascript:alert('unsafe')">Unsafe link</a>
+							</body>
+						</html>`,
+				}),
+			);
+		});
+
+		const iframe = container.querySelector("iframe");
+		const srcdoc = iframe?.srcdoc ?? "";
+
+		expect(srcdoc).toContain(".container { max-width: 560px; margin: 0 auto; }");
+		expect(srcdoc).toContain("@media (max-width: 600px)");
+		expect(srcdoc).toContain('<body class="email-shell" style="background: #f4f4f4">');
+		expect(srcdoc).toContain('<div class="container">Styled email</div>');
+		expect(srcdoc).not.toContain('onclick="alert');
+		expect(srcdoc).not.toContain('onload="alert');
+		expect(srcdoc).not.toContain("javascript:");
+		expect(srcdoc).not.toContain('postMessage("unsafe"');
+	});
+
 	it("opens sanitized email links outside the sandbox", async () => {
 		container = document.createElement("div");
 		document.body.appendChild(container);

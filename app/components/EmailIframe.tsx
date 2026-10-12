@@ -11,6 +11,68 @@ interface EmailIframeProps {
 	autoSize?: boolean;
 }
 
+const UNSAFE_URL_PROTOCOL = /^\s*(?:javascript|vbscript):/i;
+const BODY_ATTRIBUTES = ["class", "id", "style", "dir", "lang", "bgcolor"] as const;
+
+function escapeAttribute(value: string) {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/"/g, "&quot;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
+}
+
+/**
+ * Split a complete HTML email into its stylesheet and body portions before
+ * DOMPurify flattens the document. Email generators commonly put responsive
+ * class rules in <head><style>; dropping those rules is what makes templates
+ * such as Gojiberry render as unformatted document fragments.
+ */
+function prepareEmailHtml(body: string) {
+	const emailDocument = new DOMParser().parseFromString(body, "text/html");
+	const emailStyles = Array.from(emailDocument.querySelectorAll("style"))
+		.map((style) => style.textContent || "")
+		.filter(Boolean)
+		.join("\n")
+		// A CSS string cannot be allowed to terminate the trusted wrapper's
+		// style element, even if a malformed parser ever exposes that sequence.
+		.replace(/<\/style/gi, "<\\/style");
+
+	for (const element of emailDocument.querySelectorAll(
+		"script, iframe, object, embed, base, link, meta",
+	)) {
+		element.remove();
+	}
+
+	for (const element of emailDocument.querySelectorAll("*")) {
+		for (const attribute of Array.from(element.attributes)) {
+			if (attribute.name.toLowerCase().startsWith("on")) {
+				element.removeAttribute(attribute.name);
+				continue;
+			}
+			if (
+				["href", "src", "xlink:href", "action", "formaction", "poster", "background"].includes(
+					attribute.name.toLowerCase(),
+				) &&
+				UNSAFE_URL_PROTOCOL.test(attribute.value)
+			) {
+				element.removeAttribute(attribute.name);
+			}
+		}
+	}
+
+	const bodyAttributes = BODY_ATTRIBUTES.flatMap((name) => {
+		const value = emailDocument.body.getAttribute(name);
+		return value ? [`${name}="${escapeAttribute(value)}"`] : [];
+	}).join(" ");
+
+	return {
+		bodyAttributes: bodyAttributes ? ` ${bodyAttributes}` : "",
+		bodyMarkup: emailDocument.body.innerHTML,
+		emailStyles,
+	};
+}
+
 /**
  * Renders email HTML inside a sandboxed iframe.
  *
@@ -60,15 +122,22 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 	useEffect(() => {
 		const iframe = iframeRef.current;
 		if (!iframe || !body) return;
+		const { bodyAttributes, bodyMarkup, emailStyles } = prepareEmailHtml(body);
 
-		const cleanBody = DOMPurify.sanitize(body, {
-			USE_PROFILES: { html: true },
-			FORBID_TAGS: ["style"],
-			ADD_ATTR: ["target"],
-			FORCE_BODY: true,
-		});
+		const cleanWrapper = DOMPurify.sanitize(
+			`<div data-email-root>${bodyMarkup}</div>`,
+			{
+				USE_PROFILES: { html: true },
+				FORBID_TAGS: ["style"],
+				ADD_ATTR: ["target", "data-email-root"],
+				FORCE_BODY: true,
+			},
+		);
 
 		const emailBody = document.createElement("template");
+		emailBody.innerHTML = cleanWrapper;
+		const emailRoot = emailBody.content.querySelector("[data-email-root]");
+		const cleanBody = emailRoot?.innerHTML ?? cleanWrapper;
 		emailBody.innerHTML = cleanBody;
 		for (const link of emailBody.content.querySelectorAll("a[href]")) {
 			link.setAttribute("target", "_blank");
@@ -144,8 +213,9 @@ p { margin: 4px 0; }
 h1, h2, h3 { margin: 8px 0 4px; }
 ul, ol { padding-left: 20px; margin: 4px 0; }
 </style>
+${emailStyles ? `<style data-email-styles>${emailStyles}</style>` : ""}
 </head>
-<body>${safeBody}${heightScript}</body>
+<body${bodyAttributes}>${safeBody}${heightScript}</body>
 </html>`;
 	}, [body, autoSize]);
 
