@@ -63,7 +63,7 @@ export interface EnsuredEmailRoutingRule {
 
 function apiHeaders(token: string): HeadersInit {
 	return {
-		Authorization: `Bearer ${token.trim()}`,
+		Authorization: `Bearer ${token.replace(/\s+/g, "")}`,
 		"Content-Type": "application/json",
 	};
 }

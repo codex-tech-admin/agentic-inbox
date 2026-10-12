@@ -6,7 +6,7 @@ import {
 } from "../workers/lib/cloudflare-email-routing";
 
 const options = {
-	token: " \ntest-token\r\n",
+	token: " \ntest-\n token\r\n",
 	zoneId: "zone-1",
 	email: "sales@sponsoredfeeds.com",
 	workerName: "raihan-agentic-inbox",
