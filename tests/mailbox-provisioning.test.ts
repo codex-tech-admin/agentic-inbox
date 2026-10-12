@@ -6,7 +6,7 @@ import {
 } from "../workers/lib/cloudflare-email-routing";
 
 const options = {
-	token: "test-token",
+	token: " \ntest-token\r\n",
 	zoneId: "zone-1",
 	email: "sales@sponsoredfeeds.com",
 	workerName: "raihan-agentic-inbox",
@@ -39,6 +39,9 @@ describe("Cloudflare email routing", () => {
 			created: false,
 		});
 		expect(fetcher).toHaveBeenCalledOnce();
+		expect(fetcher.mock.calls[0]?.[1]?.headers).toMatchObject({
+			Authorization: "Bearer test-token",
+		});
 	});
 
 	it("creates an explicit address rule when none exists", async () => {
