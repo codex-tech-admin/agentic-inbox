@@ -250,4 +250,58 @@ export const mailboxMigrations: Migration[] = [
 				updated_at = MAX(contacts.updated_at, excluded.updated_at);
 		`),
 	},
+	{
+		// Re-run the history import as an idempotent repair migration. Some
+		// long-lived mailboxes can initialize the contacts table before their
+		// imported message history is present, leaving an otherwise valid but
+		// empty table. Recomputing the aggregate counts makes the repair safe for
+		// mailboxes that were populated by migration 12 as well.
+		name: "13_backfill_contact_history",
+		sql: txn(`
+			INSERT INTO contacts (
+				id, email, source, first_seen_at, last_seen_at,
+				received_count, created_at, updated_at
+			)
+			SELECT
+				LOWER(TRIM(sender)), LOWER(TRIM(sender)), 'history',
+				COALESCE(MIN(date), datetime('now')),
+				COALESCE(MAX(date), datetime('now')),
+				COUNT(*),
+				COALESCE(MIN(date), datetime('now')),
+				COALESCE(MAX(date), datetime('now'))
+			FROM emails
+			WHERE folder_id = 'inbox'
+				AND sender IS NOT NULL
+				AND TRIM(sender) LIKE '%@%'
+			GROUP BY LOWER(TRIM(sender))
+			ON CONFLICT(email) DO UPDATE SET
+				received_count = excluded.received_count,
+				first_seen_at = MIN(contacts.first_seen_at, excluded.first_seen_at),
+				last_seen_at = MAX(contacts.last_seen_at, excluded.last_seen_at),
+				updated_at = MAX(contacts.updated_at, excluded.updated_at);
+
+			INSERT INTO contacts (
+				id, email, source, first_seen_at, last_seen_at,
+				sent_count, created_at, updated_at
+			)
+			SELECT
+				LOWER(TRIM(recipient)), LOWER(TRIM(recipient)), 'history',
+				COALESCE(MIN(date), datetime('now')),
+				COALESCE(MAX(date), datetime('now')),
+				COUNT(*),
+				COALESCE(MIN(date), datetime('now')),
+				COALESCE(MAX(date), datetime('now'))
+			FROM emails
+			WHERE folder_id = 'sent'
+				AND recipient IS NOT NULL
+				AND TRIM(recipient) LIKE '%@%'
+				AND INSTR(recipient, ',') = 0
+			GROUP BY LOWER(TRIM(recipient))
+			ON CONFLICT(email) DO UPDATE SET
+				sent_count = excluded.sent_count,
+				first_seen_at = MIN(contacts.first_seen_at, excluded.first_seen_at),
+				last_seen_at = MAX(contacts.last_seen_at, excluded.last_seen_at),
+				updated_at = MAX(contacts.updated_at, excluded.updated_at);
+		`),
+	},
 ];
