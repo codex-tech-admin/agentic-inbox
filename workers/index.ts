@@ -31,6 +31,11 @@ import { Folders } from "../shared/folders";
 import { isCalendarAttachment } from "../shared/calendar";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
+import {
+	deleteEmailRoutingRule,
+	EmailRoutingError,
+	ensureEmailRoutingRule,
+} from "./lib/cloudflare-email-routing";
 
 type AppContext = Context<MailboxContext>;
 
@@ -38,7 +43,7 @@ type AppContext = Context<MailboxContext>;
 
 const CreateMailboxBody = z.object({
 	email: z.string().email(),
-	name: z.string().min(1),
+	name: z.string().trim().min(1).max(120),
 	settings: z.record(z.any()).optional(), // unvalidated — agentSystemPrompt goes straight to AI
 });
 
@@ -110,10 +115,8 @@ app.use("/api/v1/mailboxes/:mailboxId/*", requireMailbox);
 // -- Config ---------------------------------------------------------
 
 app.get("/api/v1/config", (c) => {
-	const domainsRaw = c.env.DOMAINS || "";
-	const domains = domainsRaw.split(",").map((d) => d.trim()).filter(Boolean);
-	const emailAddresses = c.env.EMAIL_ADDRESSES ?? [];
-	return c.json({ domains, emailAddresses });
+	const domainZones: Record<string, string> = c.env.EMAIL_DOMAIN_ZONES;
+	return c.json({ domains: Object.keys(domainZones) });
 });
 
 // -- Mailboxes ------------------------------------------------------
@@ -142,17 +145,65 @@ app.get("/api/v1/mailboxes", async (c) => {
 app.post("/api/v1/mailboxes", async (c) => {
 	const { name, settings, email: rawEmail } = CreateMailboxBody.parse(await c.req.json());
 	const email = rawEmail.toLowerCase();
-	const allowedAddresses = (c.env.EMAIL_ADDRESSES ?? []) as string[];
-	if (allowedAddresses.length > 0 && !allowedAddresses.map((a) => a.toLowerCase()).includes(email)) {
-		return c.json({ error: "Mailbox creation is restricted to configured EMAIL_ADDRESSES" }, 403);
+	const domain = email.split("@")[1] ?? "";
+	const domainZones: Record<string, string> = c.env.EMAIL_DOMAIN_ZONES;
+	const zoneId = domainZones[domain];
+	if (!zoneId) return c.json({ error: "Choose an approved email domain" }, 403);
+	if (!c.env.EMAIL_ROUTING_API_TOKEN?.trim()) {
+		return c.json({ error: "Mailbox provisioning is not configured" }, 503);
+	}
+	if (!c.env.EMAIL_ROUTING_WORKER?.trim()) {
+		return c.json({ error: "Mailbox routing worker is not configured" }, 503);
 	}
 	const key = `mailboxes/${email}.json`;
 	if (await c.env.BUCKET.head(key)) return c.json({ error: "Mailbox already exists" }, 409);
 	const defaultSettings = { fromName: name, forwarding: { enabled: false, email: "" }, signature: { enabled: false, text: "" }, autoReply: { enabled: false, subject: "", message: "" } };
 	const finalSettings = { ...defaultSettings, ...settings };
-	await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
-	const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(email));
-	await stub.getFolders();
+	const routingKey = `mailbox-routing/${email}.json`;
+	let provisionedRule: { ruleId: string; created: boolean } | undefined;
+
+	try {
+		await c.env.BUCKET.put(key, JSON.stringify(finalSettings));
+		const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(email));
+		await stub.getFolders();
+		provisionedRule = await ensureEmailRoutingRule({
+			token: c.env.EMAIL_ROUTING_API_TOKEN,
+			zoneId,
+			email,
+			workerName: c.env.EMAIL_ROUTING_WORKER,
+			displayName: name,
+		});
+		await c.env.BUCKET.put(routingKey, JSON.stringify({
+			ruleId: provisionedRule.ruleId,
+			zoneId,
+			domain,
+			workerName: c.env.EMAIL_ROUTING_WORKER,
+			managed: provisionedRule.created ? "created" : "adopted",
+			provisionedAt: new Date().toISOString(),
+		}));
+	} catch (error) {
+		if (provisionedRule?.created) {
+			try {
+				await deleteEmailRoutingRule(
+					c.env.EMAIL_ROUTING_API_TOKEN,
+					zoneId,
+					provisionedRule.ruleId,
+				);
+			} catch (rollbackError) {
+				console.error(JSON.stringify({
+					message: "Mailbox route rollback failed",
+					email,
+					ruleId: provisionedRule.ruleId,
+					error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+				}));
+			}
+		}
+		await c.env.BUCKET.delete([key, routingKey]);
+		if (error instanceof EmailRoutingError) {
+			return c.json({ error: error.message }, error.status as 409 | 502);
+		}
+		throw error;
+	}
 	return c.json({ id: email, email, name, settings: finalSettings }, 201);
 });
 
@@ -524,26 +575,33 @@ async function streamToArrayBuffer(stream: ReadableStream, streamSize: number) {
 	return result;
 }
 
-async function receiveEmail(event: { raw: ReadableStream; rawSize: number }, env: Env, ctx: ExecutionContext) {
+async function receiveEmail(
+	event: Pick<ForwardableEmailMessage, "raw" | "rawSize" | "to">,
+	env: Env,
+	ctx: ExecutionContext,
+) {
+	const mailboxId = event.to.trim().toLowerCase();
+	const domain = mailboxId.split("@")[1] ?? "";
+	const domainZones: Record<string, string> = env.EMAIL_DOMAIN_ZONES;
+	if (!domainZones[domain]) {
+		console.log(JSON.stringify({ message: "Ignoring email for unapproved domain", mailboxId }));
+		return;
+	}
+	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) {
+		console.log(JSON.stringify({ message: "Ignoring email for unknown mailbox", mailboxId }));
+		return;
+	}
+
 	const rawEmail = await streamToArrayBuffer(event.raw, event.rawSize);
 	const parsedEmail = await new PostalMime().parse(rawEmail);
-
-	if (!parsedEmail.to?.length || !parsedEmail.to[0].address) throw new Error("received email with empty to");
-
-	const allowedAddresses = ((env.EMAIL_ADDRESSES ?? []) as string[]).map((a) => a.toLowerCase());
-	const allRecipients = parsedEmail.to.map((t) => t.address?.toLowerCase()).filter(Boolean) as string[];
+	const headerRecipients = (parsedEmail.to ?? [])
+		.map((recipient) => recipient.address?.toLowerCase())
+		.filter((recipient): recipient is string => Boolean(recipient));
+	const allRecipients = headerRecipients.length > 0 ? headerRecipients : [mailboxId];
 	const ccRecipients = (parsedEmail.cc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
 	const bccRecipients = (parsedEmail.bcc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
 
-	let mailboxId: string | undefined;
-	if (allowedAddresses.length > 0) {
-		mailboxId = allRecipients.find((addr) => allowedAddresses.includes(addr));
-		if (!mailboxId) { console.log(`Ignoring email: no recipient matches EMAIL_ADDRESSES.`); return; }
-	} else { mailboxId = allRecipients[0]; }
-	if (!mailboxId) throw new Error("received email with no valid recipient address");
-
 	const messageId = crypto.randomUUID();
-	if (!(await env.BUCKET.head(`mailboxes/${mailboxId}.json`))) { console.log(`Ignoring email for ${mailboxId}: mailbox does not exist`); return; }
 
 	const stub = env.MAILBOX.get(env.MAILBOX.idFromName(mailboxId));
 

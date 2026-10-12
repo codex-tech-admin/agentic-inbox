@@ -16,15 +16,13 @@ import {
 	ArrowRightIcon,
 	EnvelopeIcon,
 	PlusIcon,
-	TrashIcon,
 } from "@phosphor-icons/react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import api from "~/services/api";
 import {
 	useCreateMailbox,
-	useDeleteMailbox,
 	useMailboxes,
 } from "~/queries/mailboxes";
 import { queryKeys } from "~/queries/keys";
@@ -55,9 +53,8 @@ export function meta() {
 
 export default function HomeRoute() {
 	const toastManager = useKumoToastManager();
-	const { data: mailboxes = [], refetch: refetchMailboxes, isFetched: mailboxesFetched } = useMailboxes();
+	const { data: mailboxes = [] } = useMailboxes();
 	const createMailbox = useCreateMailbox();
-	const deleteMailbox = useDeleteMailbox();
 
 	const { data: configData } = useQuery({
 		queryKey: queryKeys.config,
@@ -66,7 +63,6 @@ export default function HomeRoute() {
 	});
 
 	const domains = configData?.domains ?? [];
-	const emailAddresses = configData?.emailAddresses ?? [];
 
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [newPrefix, setNewPrefix] = useState("");
@@ -74,12 +70,6 @@ export default function HomeRoute() {
 	const [newName, setNewName] = useState("");
 	const [isCreating, setIsCreating] = useState(false);
 	const [createError, setCreateError] = useState<string | null>(null);
-	const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-	const [mailboxToDelete, setMailboxToDelete] = useState<{
-		id: string;
-		email: string;
-	} | null>(null);
-	const [isDeleting, setIsDeleting] = useState(false);
 
 	// Set default domain when config loads
 	useEffect(() => {
@@ -88,45 +78,24 @@ export default function HomeRoute() {
 		}
 	}, [domains, selectedDomain]);
 
-	// Auto-create mailboxes from config (run once when both data sources are ready)
-	const autoCreateDone = useRef(false);
-	useEffect(() => {
-		if (autoCreateDone.current) return;
-		if (emailAddresses.length === 0 || !mailboxesFetched) return;
-		const existingEmails = new Set(
-			mailboxes.map((m) => m.email.toLowerCase()),
-		);
-		const toCreate = emailAddresses.filter(
-			(addr) => !existingEmails.has(addr.toLowerCase()),
-		);
-		if (toCreate.length === 0) {
-			autoCreateDone.current = true;
-			return;
-		}
-		autoCreateDone.current = true;
-		let cancelled = false;
-		Promise.all(
-			toCreate.map((addr) => {
-				const localPart = addr.split("@")[0] || addr;
-				return api.createMailbox(addr, localPart).catch(() => {});
-			}),
-		).then(() => { if (!cancelled) refetchMailboxes(); });
-		return () => { cancelled = true; };
-	}, [emailAddresses, mailboxes, refetchMailboxes]);
-
 	const handleCreate = async (e: FormEvent) => {
 		e.preventDefault();
 		setCreateError(null);
-		if (!newPrefix || !selectedDomain) {
+		const prefix = newPrefix.trim().toLowerCase();
+		if (!prefix || !selectedDomain) {
 			setCreateError("Please fill in all fields");
 			return;
 		}
-		const email = `${newPrefix}@${selectedDomain}`;
-		const name = newName || newPrefix;
+		if (!/^[a-z0-9](?:[a-z0-9._+-]{0,62}[a-z0-9])?$/.test(prefix)) {
+			setCreateError("Use letters, numbers, dots, dashes, underscores, or plus signs");
+			return;
+		}
+		const email = `${prefix}@${selectedDomain}`;
+		const name = newName.trim() || prefix;
 		setIsCreating(true);
 		try {
 			await createMailbox.mutateAsync({ email, name });
-			toastManager.add({ title: "Mailbox created successfully!" });
+			toastManager.add({ title: `${email} is ready` });
 			setIsCreateOpen(false);
 			setNewPrefix("");
 			setNewName("");
@@ -138,34 +107,13 @@ export default function HomeRoute() {
 		}
 	};
 
-	const handleDelete = async () => {
-		if (!mailboxToDelete) return;
-		setIsDeleting(true);
-		try {
-			await deleteMailbox.mutateAsync(mailboxToDelete.id);
-			toastManager.add({ title: "Mailbox deleted" });
-			setIsDeleteOpen(false);
-			setMailboxToDelete(null);
-		} catch {
-			toastManager.add({ title: "Failed to delete mailbox", variant: "error" });
-		} finally {
-			setIsDeleting(false);
-		}
-	};
-
-	const isConfigured = emailAddresses.length > 0;
-	const accounts = isConfigured
-		? emailAddresses.map((addr) => {
-				const mailbox = mailboxes.find(
-					(candidate) => candidate.email.toLowerCase() === addr.toLowerCase(),
-				);
-				return {
-					id: addr,
-					email: addr,
-					name: mailbox?.settings?.fromName?.trim() || addr.split("@")[0] || addr,
-				};
-			})
-		: mailboxes;
+	const accounts = mailboxes.map((mailbox) => ({
+		...mailbox,
+		name: mailbox.settings?.fromName?.trim()
+			|| mailbox.name
+			|| mailbox.email.split("@")[0]
+			|| mailbox.email,
+	}));
 	const folderQueries = useQueries({
 		queries: accounts.map((account) => ({
 			queryKey: queryKeys.folders.list(account.id),
@@ -191,17 +139,15 @@ export default function HomeRoute() {
 						<h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
 							Mailboxes
 						</h1>
-						{!isConfigured && (
-							<div className="mt-6 sm:absolute sm:right-0 sm:top-1/2 sm:mt-0 sm:-translate-y-1/2">
-								<Button
-									variant="primary"
-									icon={<PlusIcon size={16} />}
-									onClick={() => setIsCreateOpen(true)}
-								>
-									New Mailbox
-								</Button>
-							</div>
-						)}
+						<div className="mt-6 sm:absolute sm:right-0 sm:top-1/2 sm:mt-0 sm:-translate-y-1/2">
+							<Button
+								variant="primary"
+								icon={<PlusIcon size={16} />}
+								onClick={() => setIsCreateOpen(true)}
+							>
+								Add Mailbox
+							</Button>
+						</div>
 					</div>
 					<p className="mx-auto mt-3 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
 						Choose an inbox to read, compose, and manage mail.
@@ -255,24 +201,6 @@ export default function HomeRoute() {
 											{domain}
 										</div>
 									</div>
-									{!isConfigured && (
-										<Button
-											variant="ghost"
-											size="sm"
-											shape="square"
-											icon={<TrashIcon size={16} />}
-											aria-label={`Delete mailbox ${account.email}`}
-											onClick={(e) => {
-												e.preventDefault();
-												e.stopPropagation();
-												setMailboxToDelete({
-													id: account.id,
-													email: account.email,
-												});
-												setIsDeleteOpen(true);
-											}}
-										/>
-									)}
 									<ArrowRightIcon
 										size={22}
 										weight="bold"
@@ -297,19 +225,15 @@ export default function HomeRoute() {
 								No mailboxes yet
 							</h3>
 							<p className="text-sm text-kumo-subtle max-w-sm mb-5">
-								{isConfigured
-									? "Your email routing is configured but no mailboxes have been created yet. They will appear here automatically."
-									: "Create a mailbox to start sending and receiving emails with your domain."}
+								Add an address on one of your approved domains to start sending and receiving email.
 							</p>
-							{!isConfigured && (
-								<Button
-									variant="primary"
-									icon={<PlusIcon size={16} />}
-									onClick={() => setIsCreateOpen(true)}
-								>
-									Create Mailbox
-								</Button>
-							)}
+							<Button
+								variant="primary"
+								icon={<PlusIcon size={16} />}
+								onClick={() => setIsCreateOpen(true)}
+							>
+								Add Mailbox
+							</Button>
 						</div>
 					</div>
 				)}
@@ -318,9 +242,12 @@ export default function HomeRoute() {
 			{/* Create Dialog */}
 			<Dialog.Root open={isCreateOpen} onOpenChange={setIsCreateOpen}>
 				<Dialog size="sm" className="p-6">
-					<Dialog.Title className="text-base font-semibold mb-5">
-						Create New Mailbox
+					<Dialog.Title className="text-base font-semibold mb-2">
+						Add Mailbox
 					</Dialog.Title>
+					<Dialog.Description className="mb-5 text-sm text-kumo-subtle">
+						The address will be routed to this inbox automatically.
+					</Dialog.Description>
 					<form onSubmit={handleCreate} className="space-y-4">
 						{createError && (
 							<Text variant="error" size="sm">
@@ -339,6 +266,9 @@ export default function HomeRoute() {
 										size="sm"
 										value={newPrefix}
 										onChange={(e) => setNewPrefix(e.target.value)}
+										maxLength={64}
+										autoCapitalize="none"
+										spellCheck={false}
 										required
 									/>
 								</div>
@@ -388,49 +318,10 @@ export default function HomeRoute() {
 								loading={isCreating}
 								disabled={!selectedDomain}
 							>
-								Create
+								Add Mailbox
 							</Button>
 						</div>
 					</form>
-				</Dialog>
-			</Dialog.Root>
-
-			{/* Delete Dialog */}
-			<Dialog.Root
-				open={isDeleteOpen}
-				onOpenChange={(open) => {
-					setIsDeleteOpen(open);
-					if (!open) setMailboxToDelete(null);
-				}}
-			>
-				<Dialog size="sm" className="p-6">
-					<Dialog.Title className="text-base font-semibold mb-2">
-						Delete Mailbox
-					</Dialog.Title>
-					<Dialog.Description className="text-kumo-subtle text-sm mb-5">
-						Are you sure you want to delete{" "}
-						<strong className="text-kumo-default">
-							{mailboxToDelete?.email}
-						</strong>
-						? This action cannot be undone.
-					</Dialog.Description>
-					<div className="flex justify-end gap-2">
-						<Dialog.Close
-							render={(props) => (
-								<Button {...props} variant="secondary" size="sm">
-									Cancel
-								</Button>
-							)}
-						/>
-						<Button
-							variant="destructive"
-							size="sm"
-							loading={isDeleting}
-							onClick={handleDelete}
-						>
-							Delete
-						</Button>
-					</div>
 				</Dialog>
 			</Dialog.Root>
 		</div>

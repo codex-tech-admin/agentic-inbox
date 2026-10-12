@@ -1,28 +1,38 @@
-import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 
-const demoAddress = "demo@sponsoredfeeds.com";
-const source = JSON.parse(
-	readFileSync("wrangler.jsonc", "utf8").replace(/^\s*\/\/.*$/gm, ""),
-);
-const built = JSON.parse(readFileSync("build/server/wrangler.json", "utf8"));
+const expectedDomainZones = {
+	"raihanrazi.com": "511f5c78985dac195d65affb397cf07c",
+	"codexdigital.ai": "d4623cc5d49eb9d3cbb8a774753b7d95",
+	"semanticlab.ai": "0087b1e96834429a581a7ee1cfc98bab",
+	"sponsoredfeeds.com": "4e18f9c2c23cf03b22a8d063a1056761",
+};
 
-for (const [label, config] of [["source", source], ["built", built]]) {
-	assert.equal(config.name, "raihan-agentic-inbox", `${label}: wrong Worker`);
-	const receivers = config.vars?.EMAIL_ADDRESSES;
-	const senders = config.send_email?.find((binding) => binding.name === "EMAIL")
-		?.allowed_sender_addresses;
-	assert.ok(Array.isArray(receivers), `${label}: missing received addresses`);
-	assert.ok(Array.isArray(senders), `${label}: missing allowed senders`);
-	assert.ok(receivers.includes(demoAddress), `${label}: demo inbox cannot receive`);
-	assert.ok(senders.includes(demoAddress), `${label}: demo inbox cannot send`);
-	assert.deepEqual(
-		[...new Set(receivers)].sort(),
-		[...new Set(senders)].sort(),
-		`${label}: sender and receiver allowlists differ`,
-	);
+function assert(condition, message) {
+	if (!condition) throw new Error(`Deployment config assertion failed: ${message}`);
 }
 
-assert.deepEqual(built.vars.EMAIL_ADDRESSES, source.vars.EMAIL_ADDRESSES);
-assert.deepEqual(built.send_email, source.send_email);
-console.log("Demo mailbox config matches the flattened Worker artifact.");
+const [source, artifactText] = await Promise.all([
+	readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
+	readFile(new URL("../build/server/wrangler.json", import.meta.url), "utf8"),
+]);
+const artifact = JSON.parse(artifactText);
+
+assert(source.includes('"EMAIL_DOMAIN_ZONES"'), "source domain registry is missing");
+assert(source.includes('"EMAIL_ROUTING_WORKER": "raihan-agentic-inbox"'), "source routing worker is missing");
+assert(!source.includes('"EMAIL_ADDRESSES"'), "legacy static address allowlist remains in source");
+assert(!source.includes('"allowed_sender_addresses"'), "source send binding still has a static sender list");
+assert(
+	JSON.stringify(artifact.vars?.EMAIL_DOMAIN_ZONES) === JSON.stringify(expectedDomainZones),
+	"flattened domain registry does not match the approved production zones",
+);
+assert(artifact.vars?.EMAIL_ROUTING_WORKER === "raihan-agentic-inbox", "flattened routing worker is wrong");
+assert(
+	JSON.stringify(artifact.send_email) === JSON.stringify([{ name: "EMAIL", remote: true }]),
+	"flattened email-sending binding is not dynamically provisionable",
+);
+assert(
+	artifact.routes?.some((route) => route.pattern === "inbox.raihanrazi.com" && route.custom_domain === true),
+	"production inbox route is missing from the flattened artifact",
+);
+
+console.log("Mailbox provisioning config matches the flattened Worker artifact.");

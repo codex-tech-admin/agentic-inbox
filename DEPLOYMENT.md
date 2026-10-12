@@ -1,7 +1,7 @@
 # Raihan Agentic Inbox deployment
 
-This fork is deployed to Cloudflare as a standalone managed inbox. It hosts six
-mailboxes:
+This fork is deployed to Cloudflare as a standalone managed inbox. Its current
+mailboxes are:
 
 - `contact@raihanrazi.com` — Raihan Career Inbox
 - `hello@codexdigital.ai` — Codex Digital Enquiries
@@ -37,15 +37,16 @@ this inbox and is not forwarded to the previous destination.
 Production configuration lives in `wrangler.jsonc`. Cloudflare stores
 `POLICY_AUD` and `TEAM_DOMAIN` as Worker secrets; do not commit their values.
 
-The upstream MCP tools, including send and delete, remain enabled. The outbound
-email binding is restricted to the six configured mailbox addresses as
-senders.
+The upstream MCP tools, including send and delete, remain enabled. Outbound
+sending is restricted by the application to provisioned mailboxes on approved
+domains.
 
-`DOMAINS` and `EMAIL_ADDRESSES` list every domain and mailbox address this
-Worker accepts. Adding a mailbox requires both: the address in
-`EMAIL_ADDRESSES`, then the mailbox record itself. It also requires an exact
-Email Routing rule to deliver incoming mail to the Worker. Mail stays in
-`inbox.raihanrazi.com`; it is not forwarded to an external mailbox.
+`EMAIL_DOMAIN_ZONES` maps every approved domain to its Cloudflare zone. The
+authenticated Add Mailbox flow creates the mailbox record and an exact-address
+Email Routing rule for that domain. `EMAIL_ROUTING_API_TOKEN` is a Worker secret
+limited to Email Routing Rules Edit on those zones. Mail stays in
+`inbox.raihanrazi.com`; it is not forwarded to an external mailbox, and the
+catch-all remains disabled.
 
 ## SponsoredFeeds demo mailbox rollout
 
@@ -55,30 +56,16 @@ and an outbound sender; it does not grant access to other mailboxes or change
 SponsoredFeeds web app permissions.
 
 1. Run `npm run check`. This regenerates Wrangler binding types and checks the
-   source and flattened artifact allowlists, build, and both Wrangler dry runs.
+   source and flattened provisioning configuration, build, and both Wrangler dry runs.
    Confirm the generated
    `worker-configuration.d.ts` reflects the configuration.
 2. After approval, merge the exact reviewed commit into `main` and wait for its
-   Cloudflare Workers Build to finish. Confirm the deployed version has
-   `demo@sponsoredfeeds.com` in `EMAIL_ADDRESSES` and in the `EMAIL`
-   binding's `allowed_sender_addresses`.
-3. Create the exact-address Email Routing rule (the catch-all remains disabled):
-
-   ```sh
-   npx --yes wrangler@4.149.0 email routing rules create sponsoredfeeds.com \
-     --name "SponsoredFeeds demo inbox" \
-     --match-type literal --match-field to \
-     --match-value demo@sponsoredfeeds.com \
-     --action-type worker --action-value raihan-agentic-inbox
-   ```
-
-   The repository's pinned Wrangler version does not yet expose the Email
-   Routing CLI commands, so use the version shown for this step.
-
-4. Open the authenticated `https://inbox.raihanrazi.com/` mailbox hub. Its
-   configured-address list creates the R2 mailbox record and Durable Object
-   folders on first load. Verify `demo@sponsoredfeeds.com` appears in the hub.
-5. Send a test message to the address and verify it appears in the new mailbox.
+   Cloudflare Workers Build to finish. Confirm the deployed version has the
+   approved domain registry and the `EMAIL_ROUTING_API_TOKEN` secret binding.
+3. Open the authenticated `https://inbox.raihanrazi.com/` mailbox hub and use
+   Add Mailbox. The application creates the R2 mailbox record, Durable Object
+   folders, and exact-address routing rule together. Verify the address appears.
+4. Send a test message to the address and verify it appears in the new mailbox.
    Then request a SponsoredFeeds web sign-in code and verify delivery in the
    same mailbox. Only after that should the demo account be onboarded.
 
@@ -95,9 +82,8 @@ The `codexdigital` Worker (separate repository, `codexdigital.ai`) handles
 through the `hello@codexdigital.ai` routing rule into the Codex Digital
 Enquiries mailbox. Replying from this inbox answers the enquirer directly.
 
-Lead delivery therefore depends on the `EMAIL_ADDRESSES` value in this Worker's
-configuration. Do not remove `hello@codexdigital.ai` from that list while the
-website form is live.
+Lead delivery depends on the `hello@codexdigital.ai` mailbox record and its
+exact Email Routing rule. Do not remove either while the website form is live.
 
 The career agent reads the REST API using Cloudflare Access service-token
 headers. The token value is stored outside Git in the career-agent state

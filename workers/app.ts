@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 import { createRequestHandler } from "react-router";
 import { app as apiApp, receiveEmail } from "./index";
-import { getMailboxStub } from "./lib/email-helpers";
+import { getMailboxStub, listMailboxes } from "./lib/email-helpers";
 import { attachmentObjectKeys, getTrashPurgeCutoff } from "./lib/trash";
 import { EmailMCP } from "./mcp";
 import type { Env } from "./types";
@@ -113,7 +113,7 @@ app.all("*", (c) => {
 export default {
 	fetch: app.fetch,
 	async email(
-		event: { raw: ReadableStream; rawSize: number },
+		event: ForwardableEmailMessage,
 		env: Env,
 		ctx: ExecutionContext,
 	) {
@@ -128,7 +128,7 @@ export default {
 	},
 	async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
 		const cutoff = getTrashPurgeCutoff();
-		const mailboxIds = (env.EMAIL_ADDRESSES ?? []) as string[];
+		const mailboxIds = (await listMailboxes(env.BUCKET)).map((mailbox) => mailbox.id);
 		ctx.waitUntil(Promise.all(mailboxIds.map(async (mailboxId) => {
 			try {
 				const result = await getMailboxStub(env, mailboxId).deleteTrashEmails(cutoff);

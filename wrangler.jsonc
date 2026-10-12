@@ -14,14 +14,13 @@
 		// TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
 		// The worker now fails closed outside local development if Access is not configured.
 		"DOMAINS": "raihanrazi.com,codexdigital.ai,semanticlab.ai,sponsoredfeeds.com",
-		"EMAIL_ADDRESSES": [
-			"contact@raihanrazi.com",
-			"hello@codexdigital.ai",
-			"hello@semanticlab.ai",
-			"hello@sponsoredfeeds.com",
-			"codex-studio-test@sponsoredfeeds.com",
-			"demo@sponsoredfeeds.com"
-		]
+		"EMAIL_DOMAIN_ZONES": {
+			"raihanrazi.com": "511f5c78985dac195d65affb397cf07c",
+			"codexdigital.ai": "d4623cc5d49eb9d3cbb8a774753b7d95",
+			"semanticlab.ai": "0087b1e96834429a581a7ee1cfc98bab",
+			"sponsoredfeeds.com": "4e18f9c2c23cf03b22a8d063a1056761"
+		},
+		"EMAIL_ROUTING_WORKER": "raihan-agentic-inbox"
 	},
 	"routes": [
 		{
@@ -35,15 +34,7 @@
 	"send_email": [
 		{
 			"name": "EMAIL",
-			"remote": true,
-			"allowed_sender_addresses": [
-				"contact@raihanrazi.com",
-				"hello@codexdigital.ai",
-				"hello@semanticlab.ai",
-				"hello@sponsoredfeeds.com",
-				"codex-studio-test@sponsoredfeeds.com",
-				"demo@sponsoredfeeds.com"
-			]
+			"remote": true
 		}
 	],
 	"r2_buckets": [
