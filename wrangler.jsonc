@@ -19,7 +19,8 @@
 			"hello@codexdigital.ai",
 			"hello@semanticlab.ai",
 			"hello@sponsoredfeeds.com",
-			"codex-studio-test@sponsoredfeeds.com"
+			"codex-studio-test@sponsoredfeeds.com",
+			"demo@sponsoredfeeds.com"
 		]
 	},
 	"routes": [
@@ -40,7 +41,8 @@
 				"hello@codexdigital.ai",
 				"hello@semanticlab.ai",
 				"hello@sponsoredfeeds.com",
-				"codex-studio-test@sponsoredfeeds.com"
+				"codex-studio-test@sponsoredfeeds.com",
+				"demo@sponsoredfeeds.com"
 			]
 		}
 	],
