@@ -34,6 +34,22 @@ export const emails = sqliteTable("emails", {
 	calendar_response: text("calendar_response"),
 });
 
+export const contacts = sqliteTable("contacts", {
+	id: text("id").primaryKey(),
+	email: text("email").notNull().unique(),
+	name: text("name"),
+	company: text("company"),
+	notes: text("notes"),
+	source: text("source").notNull().default("history"),
+	favorite: integer("favorite").notNull().default(0),
+	first_seen_at: text("first_seen_at"),
+	last_seen_at: text("last_seen_at"),
+	sent_count: integer("sent_count").notNull().default(0),
+	received_count: integer("received_count").notNull().default(0),
+	created_at: text("created_at").notNull(),
+	updated_at: text("updated_at").notNull(),
+});
+
 export const attachments = sqliteTable("attachments", {
 	id: text("id").primaryKey(),
 	email_id: text("email_id")

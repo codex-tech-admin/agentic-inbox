@@ -8,6 +8,7 @@ import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RichTextEditor from "./RichTextEditor";
 import AttachmentPicker from "./AttachmentPicker";
+import RecipientField from "./RecipientField";
 
 export default function ComposePanel() {
 	const { mailboxId, folder } = useParams<{
@@ -68,63 +69,34 @@ export default function ComposePanel() {
 					{error && <Banner variant="error" text={error} />}
 
 					<div className="space-y-3">
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-								To
-							</label>
-							<div className="flex-1 flex items-center gap-2 min-w-0">
-								<Input
-									type="text"
-									placeholder="recipient@example.com"
-									size="sm"
+						<div className="flex items-start gap-2">
+							<div className="min-w-0 flex-1">
+								<RecipientField
+									label="To"
+									mailboxId={mailboxId}
 									value={to}
-									onChange={(e) => setTo(e.target.value)}
+									onChange={setTo}
 									required
+									layout="inline"
 								/>
-								{!showCcBcc && (
-									<button
-										type="button"
-										onClick={() => setShowCcBcc(true)}
-										className="shrink-0 text-xs text-kumo-link hover:text-kumo-link-hover font-medium"
-									>
-										CC / BCC
-									</button>
-								)}
 							</div>
+							{!showCcBcc && (
+								<button
+									type="button"
+									onClick={() => setShowCcBcc(true)}
+									className="mt-2 shrink-0 text-xs font-medium text-kumo-link hover:text-kumo-link-hover"
+								>
+									CC / BCC
+								</button>
+							)}
 						</div>
 
 						{showCcBcc && (
-							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-									CC
-								</label>
-								<div className="flex-1">
-									<Input
-										type="text"
-										size="sm"
-										value={cc}
-										onChange={(e) => setCc(e.target.value)}
-										placeholder="Separate multiple addresses with commas"
-									/>
-								</div>
-							</div>
+							<RecipientField label="CC" mailboxId={mailboxId} value={cc} onChange={setCc} layout="inline" />
 						)}
 
 						{showCcBcc && (
-							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-kumo-subtle w-14 shrink-0">
-									BCC
-								</label>
-								<div className="flex-1">
-									<Input
-										type="text"
-										size="sm"
-										value={bcc}
-										onChange={(e) => setBcc(e.target.value)}
-										placeholder="Separate multiple addresses with commas"
-									/>
-								</div>
-							</div>
+							<RecipientField label="BCC" mailboxId={mailboxId} value={bcc} onChange={setBcc} layout="inline" />
 						)}
 
 						<div className="flex items-center gap-2">

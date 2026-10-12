@@ -8,6 +8,7 @@ import { useParams } from "react-router";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RichTextEditor from "./RichTextEditor";
 import AttachmentPicker from "./AttachmentPicker";
+import RecipientField from "./RecipientField";
 import { useUIStore } from "~/hooks/useUIStore";
 
 export default function ComposeEmail() {
@@ -55,13 +56,11 @@ export default function ComposeEmail() {
 					{error && <Banner variant="error" text={error} />}
 					<div className="flex items-center gap-2">
 						<div className="flex-1">
-							<Input
+							<RecipientField
 								label="To"
-								type="text"
-								placeholder="recipient@example.com, another@example.com"
-								size="sm"
+								mailboxId={mailboxId}
 								value={to}
-								onChange={(e) => setTo(e.target.value)}
+								onChange={setTo}
 								required
 							/>
 						</div>
@@ -76,23 +75,19 @@ export default function ComposeEmail() {
 						)}
 					</div>
 					{showCcBcc && (
-						<Input
+						<RecipientField
 							label="CC"
-							type="text"
-							size="sm"
+							mailboxId={mailboxId}
 							value={cc}
-							onChange={(e) => setCc(e.target.value)}
-							placeholder="Separate multiple addresses with commas"
+							onChange={setCc}
 						/>
 					)}
 					{showCcBcc && (
-						<Input
+						<RecipientField
 							label="BCC"
-							type="text"
-							size="sm"
+							mailboxId={mailboxId}
 							value={bcc}
-							onChange={(e) => setBcc(e.target.value)}
-							placeholder="Separate multiple addresses with commas"
+							onChange={setBcc}
 						/>
 					)}
 					<Input

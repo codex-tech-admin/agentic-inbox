@@ -10,6 +10,11 @@ import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
 import { getMovedEmailFolderState } from "../lib/email-folder-state";
+import {
+	contactDisplayNameFromHeaders,
+	normalizeContactEmail,
+	splitContactAddresses,
+} from "../lib/contacts";
 import { applyMigrations, mailboxMigrations } from "./migrations";
 
 /**
@@ -88,6 +93,7 @@ interface EmailData {
 	thread_id?: string | null;
 	message_id?: string | null;
 	raw_headers?: string | null;
+	sender_name?: string | null;
 }
 
 interface AttachmentData {
@@ -100,6 +106,38 @@ interface AttachmentData {
 	disposition?: string | null;
 }
 
+interface ContactRow {
+	[key: string]: string | number | null;
+	id: string;
+	email: string;
+	name: string | null;
+	company: string | null;
+	notes: string | null;
+	source: "history" | "manual";
+	favorite: number;
+	first_seen_at: string | null;
+	last_seen_at: string | null;
+	sent_count: number;
+	received_count: number;
+	created_at: string;
+	updated_at: string;
+}
+
+interface ContactInput {
+	email: string;
+	name?: string | null;
+	company?: string | null;
+	notes?: string | null;
+	favorite?: boolean;
+}
+
+interface ContactUpdateInput {
+	name?: string | null;
+	company?: string | null;
+	notes?: string | null;
+	favorite?: boolean;
+}
+
 export class MailboxDO extends DurableObject<Env> {
 	declare __DURABLE_OBJECT_BRAND: never;
 	db: ReturnType<typeof drizzle>;
@@ -108,6 +146,194 @@ export class MailboxDO extends DurableObject<Env> {
 		super(state, env);
 		this.db = drizzle(this.ctx.storage, { schema });
 		applyMigrations(this.ctx.storage.sql, mailboxMigrations, this.ctx.storage);
+	}
+
+	// ── Contacts ────────────────────────────────────────────────────
+
+	private serializeContact(contact: ContactRow | undefined) {
+		if (!contact) return null;
+		return { ...contact, favorite: Boolean(contact.favorite) };
+	}
+
+	private getContactRow(id: string) {
+		return [...this.ctx.storage.sql.exec<ContactRow>(
+			`SELECT id, email, name, company, notes, source, favorite,
+				first_seen_at, last_seen_at, sent_count, received_count,
+				created_at, updated_at
+			 FROM contacts WHERE id = ?1 LIMIT 1`,
+			id,
+		)][0];
+	}
+
+	private backfillContactNames() {
+		const unnamed = [...this.ctx.storage.sql.exec<{
+			id: string;
+			raw_headers: string | null;
+		}>(`
+			SELECT contacts.id,
+				(
+					SELECT emails.raw_headers
+					FROM emails
+					WHERE LOWER(TRIM(emails.sender)) = contacts.email
+						AND emails.raw_headers IS NOT NULL
+					ORDER BY emails.date DESC
+					LIMIT 1
+				) AS raw_headers
+			FROM contacts
+			WHERE name IS NULL OR TRIM(name) = ''
+			LIMIT 100
+		`)];
+
+		for (const contact of unnamed) {
+			const name = contactDisplayNameFromHeaders(contact.raw_headers);
+			if (!name) continue;
+			this.ctx.storage.sql.exec(
+				"UPDATE contacts SET name = ?1 WHERE id = ?2 AND (name IS NULL OR TRIM(name) = '')",
+				name,
+				contact.id,
+			);
+		}
+	}
+
+	async listContacts(options: { query?: string; limit?: number } = {}) {
+		this.backfillContactNames();
+		const limit = Math.min(Math.max(options.limit ?? 100, 1), 200);
+		const query = options.query?.trim().toLowerCase();
+		const select = `SELECT id, email, name, company, notes, source, favorite,
+			first_seen_at, last_seen_at, sent_count, received_count,
+			created_at, updated_at FROM contacts`;
+		const order = `ORDER BY favorite DESC,
+			CASE WHEN source = 'manual' THEN 0 ELSE 1 END,
+			COALESCE(last_seen_at, updated_at) DESC, email ASC LIMIT`;
+		const rows = query
+			? [...this.ctx.storage.sql.exec<ContactRow>(
+				`${select} WHERE LOWER(email) LIKE ?1
+					OR LOWER(COALESCE(name, '')) LIKE ?1
+					OR LOWER(COALESCE(company, '')) LIKE ?1
+				 ${order} ?2`,
+				`%${query}%`,
+				limit,
+			)]
+			: [...this.ctx.storage.sql.exec<ContactRow>(`${select} ${order} ?1`, limit)];
+		return rows.map((contact) => this.serializeContact(contact));
+	}
+
+	async createContact(input: ContactInput) {
+		const email = normalizeContactEmail(input.email);
+		if (!email) throw new Error("Invalid contact email");
+		const now = new Date().toISOString();
+		this.ctx.storage.sql.exec(
+			`INSERT INTO contacts (
+				id, email, name, company, notes, source, favorite,
+				created_at, updated_at
+			) VALUES (?1, ?1, ?2, ?3, ?4, 'manual', ?5, ?6, ?6)
+			ON CONFLICT(email) DO UPDATE SET
+				name = excluded.name,
+				company = excluded.company,
+				notes = excluded.notes,
+				source = 'manual',
+				favorite = excluded.favorite,
+				updated_at = excluded.updated_at`,
+			email,
+			input.name?.trim() || null,
+			input.company?.trim() || null,
+			input.notes?.trim() || null,
+			input.favorite ? 1 : 0,
+			now,
+		);
+		return this.serializeContact(this.getContactRow(email));
+	}
+
+	async updateContact(id: string, input: ContactUpdateInput) {
+		const normalizedId = normalizeContactEmail(id);
+		if (!normalizedId || !this.getContactRow(normalizedId)) return null;
+		const now = new Date().toISOString();
+		this.ctx.storage.transactionSync(() => {
+			if (input.name !== undefined) {
+				this.ctx.storage.sql.exec(
+					"UPDATE contacts SET name = ?1 WHERE id = ?2",
+					input.name?.trim() || null,
+					normalizedId,
+				);
+			}
+			if (input.company !== undefined) {
+				this.ctx.storage.sql.exec(
+					"UPDATE contacts SET company = ?1 WHERE id = ?2",
+					input.company?.trim() || null,
+					normalizedId,
+				);
+			}
+			if (input.notes !== undefined) {
+				this.ctx.storage.sql.exec(
+					"UPDATE contacts SET notes = ?1 WHERE id = ?2",
+					input.notes?.trim() || null,
+					normalizedId,
+				);
+			}
+			if (input.favorite !== undefined) {
+				this.ctx.storage.sql.exec(
+					"UPDATE contacts SET favorite = ?1 WHERE id = ?2",
+					input.favorite ? 1 : 0,
+					normalizedId,
+				);
+			}
+			this.ctx.storage.sql.exec(
+				"UPDATE contacts SET updated_at = ?1 WHERE id = ?2",
+				now,
+				normalizedId,
+			);
+		});
+		return this.serializeContact(this.getContactRow(normalizedId));
+	}
+
+	async deleteContact(id: string) {
+		const normalizedId = normalizeContactEmail(id);
+		if (!normalizedId) return false;
+		const existing = this.getContactRow(normalizedId);
+		if (!existing) return false;
+		this.ctx.storage.sql.exec("DELETE FROM contacts WHERE id = ?1", normalizedId);
+		return true;
+	}
+
+	private recordContact(
+		address: string,
+		direction: "sent" | "received",
+		date: string,
+		name?: string | null,
+	) {
+		const email = normalizeContactEmail(address);
+		if (!email) return;
+		const normalizedName = name?.trim() || null;
+		const now = new Date().toISOString();
+		const sentCount = direction === "sent" ? 1 : 0;
+		const receivedCount = direction === "received" ? 1 : 0;
+		this.ctx.storage.sql.exec(
+			`INSERT INTO contacts (
+				id, email, name, source, first_seen_at, last_seen_at,
+				sent_count, received_count, created_at, updated_at
+			) VALUES (?1, ?1, ?2, 'history', ?3, ?3, ?4, ?5, ?6, ?6)
+			ON CONFLICT(email) DO UPDATE SET
+				name = CASE
+					WHEN (contacts.name IS NULL OR TRIM(contacts.name) = '')
+						AND excluded.name IS NOT NULL THEN excluded.name
+					ELSE contacts.name
+				END,
+				first_seen_at = CASE
+					WHEN contacts.first_seen_at IS NULL OR excluded.first_seen_at < contacts.first_seen_at
+					THEN excluded.first_seen_at ELSE contacts.first_seen_at END,
+				last_seen_at = CASE
+					WHEN contacts.last_seen_at IS NULL OR excluded.last_seen_at > contacts.last_seen_at
+					THEN excluded.last_seen_at ELSE contacts.last_seen_at END,
+				sent_count = contacts.sent_count + excluded.sent_count,
+				received_count = contacts.received_count + excluded.received_count,
+				updated_at = excluded.updated_at`,
+			email,
+			normalizedName,
+			date,
+			sentCount,
+			receivedCount,
+			now,
+		);
 	}
 
 	// ── Email CRUD (Drizzle) ───────────────────────────────────────
@@ -979,6 +1205,16 @@ export class MailboxDO extends DurableObject<Env> {
 
 		if (attachments.length > 0) {
 			this.db.insert(schema.attachments).values(attachments).run();
+		}
+
+		if (folderId === Folders.INBOX) {
+			this.recordContact(email.sender, "received", email.date, email.sender_name);
+		} else if (folderId === Folders.SENT) {
+			for (const address of splitContactAddresses(
+				[email.recipient, email.cc, email.bcc].filter(Boolean).join(","),
+			)) {
+				this.recordContact(address, "sent", email.date);
+			}
 		}
 	}
 }

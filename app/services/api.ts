@@ -4,7 +4,7 @@
 
 import type { CalendarInvite, CalendarResponse } from "shared/calendar";
 import type { OutboundAttachment } from "shared/attachments";
-import type { Email, Folder, Mailbox } from "~/types";
+import type { Contact, ContactInput, Email, Folder, Mailbox } from "~/types";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -161,6 +161,19 @@ const api = {
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/reply`, email),
 	forwardEmail: (mailboxId: string, emailId: string, email: unknown) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/forward`, email),
+
+	// Contacts
+	listContacts: (mailboxId: string, query = "", limit = 100, opts?: { signal?: AbortSignal }) =>
+		get<Contact[]>(`/api/v1/mailboxes/${mailboxId}/contacts`, {
+			params: { q: query, limit: String(limit) },
+			signal: opts?.signal,
+		}),
+	createContact: (mailboxId: string, contact: ContactInput) =>
+		post<Contact>(`/api/v1/mailboxes/${mailboxId}/contacts`, contact),
+	updateContact: (mailboxId: string, id: string, contact: Partial<Omit<ContactInput, "email">>) =>
+		put<Contact>(`/api/v1/mailboxes/${mailboxId}/contacts/${encodeURIComponent(id)}`, contact),
+	deleteContact: (mailboxId: string, id: string) =>
+		del<void>(`/api/v1/mailboxes/${mailboxId}/contacts/${encodeURIComponent(id)}`),
 
 	// Folders
 	listFolders: (mailboxId: string) =>

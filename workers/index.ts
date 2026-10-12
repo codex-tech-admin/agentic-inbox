@@ -60,6 +60,19 @@ const DraftBody = z.object({
 	retain_attachment_ids: z.array(z.string().min(1)).optional(),
 });
 
+const ContactCreateBody = z.object({
+	email: z.string().email(),
+	name: z.string().trim().max(120).optional(),
+	company: z.string().trim().max(120).optional(),
+	notes: z.string().trim().max(2000).optional(),
+	favorite: z.boolean().optional(),
+});
+
+const ContactUpdateBody = ContactCreateBody.omit({ email: true }).partial().refine(
+	(value) => Object.keys(value).length > 0,
+	{ message: "Provide at least one contact field" },
+);
+
 // -- Helpers --------------------------------------------------------
 
 function slugify(text: string) { // can return "" for non-alphanumeric input
@@ -491,6 +504,37 @@ app.post("/api/v1/mailboxes/:mailboxId/threads/:threadId/read", async (c: AppCon
 	return c.json({ status: "marked_read" });
 });
 
+// -- Contacts -------------------------------------------------------
+
+app.get("/api/v1/mailboxes/:mailboxId/contacts", async (c: AppContext) => {
+	const contacts = await c.var.mailboxStub.listContacts({
+		query: c.req.query("q"),
+		limit: intQuery(c, "limit"),
+	});
+	return c.json(contacts);
+});
+
+app.post("/api/v1/mailboxes/:mailboxId/contacts", async (c: AppContext) => {
+	const input = ContactCreateBody.parse(await c.req.json());
+	return c.json(await c.var.mailboxStub.createContact(input), 201);
+});
+
+app.put("/api/v1/mailboxes/:mailboxId/contacts/:id", async (c: AppContext) => {
+	const input = ContactUpdateBody.parse(await c.req.json());
+	const contact = await c.var.mailboxStub.updateContact(
+		decodeURIComponent(c.req.param("id")!),
+		input,
+	);
+	return contact ? c.json(contact) : c.json({ error: "Contact not found" }, 404);
+});
+
+app.delete("/api/v1/mailboxes/:mailboxId/contacts/:id", async (c: AppContext) => {
+	const deleted = await c.var.mailboxStub.deleteContact(
+		decodeURIComponent(c.req.param("id")!),
+	);
+	return deleted ? c.body(null, 204) : c.json({ error: "Contact not found" }, 404);
+});
+
 // -- Reply / Forward ------------------------------------------------
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/reply", handleReplyEmail);
@@ -632,6 +676,7 @@ async function receiveEmail(
 	await stub.createEmail(Folders.INBOX, {
 		id: messageId, subject: parsedEmail.subject || "",
 		sender: (parsedEmail.from?.address || "").toLowerCase(), recipient: allRecipients.join(", "),
+		sender_name: parsedEmail.from?.name?.trim() || null,
 		cc: ccRecipients.join(", ") || null, bcc: bccRecipients.join(", ") || null,
 		date: new Date().toISOString(), // uses receive time, not the email's Date header
 		body: parsedEmail.html || parsedEmail.text || "",

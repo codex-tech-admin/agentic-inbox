@@ -66,3 +66,27 @@ export interface Folder {
 	name: string;
 	unreadCount: number;
 }
+
+export interface Contact {
+	id: string;
+	email: string;
+	name?: string | null;
+	company?: string | null;
+	notes?: string | null;
+	source: "history" | "manual";
+	favorite: boolean;
+	first_seen_at?: string | null;
+	last_seen_at?: string | null;
+	sent_count: number;
+	received_count: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ContactInput {
+	email: string;
+	name?: string;
+	company?: string;
+	notes?: string;
+	favorite?: boolean;
+}

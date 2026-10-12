@@ -240,6 +240,7 @@ describe("dynamic inbound mailbox routing", () => {
 			"inbox",
 			expect.objectContaining({
 				subject: "Envelope routing test",
+				sender_name: "Sender",
 				recipient: "visible-recipient@example.com",
 			}),
 			[],
