@@ -23,6 +23,24 @@ afterEach(async () => {
 });
 
 describe("EmailIframe", () => {
+	it("gives plain email paragraphs a clear reading rhythm", async () => {
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+
+		await act(async () => {
+			root?.render(
+				createElement(EmailIframe, {
+					body: "<p>First paragraph</p><p>Second paragraph</p><p>Sign-off</p>",
+				}),
+			);
+		});
+
+		const srcdoc = container.querySelector("iframe")?.srcdoc ?? "";
+		expect(srcdoc).toContain("p { margin: 0 0 12px; }");
+		expect(srcdoc).toContain("p:last-child { margin-bottom: 0; }");
+	});
+
 	it("preserves embedded email styles while removing executable markup", async () => {
 		container = document.createElement("div");
 		document.body.appendChild(container);

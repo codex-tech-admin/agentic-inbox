@@ -227,7 +227,8 @@ pre {
 }
 table { border-collapse: collapse; max-width: 100%; }
 td, th { padding: 4px 8px; }
-p { margin: 4px 0; }
+p { margin: 0 0 12px; }
+p:last-child { margin-bottom: 0; }
 h1, h2, h3 { margin: 8px 0 4px; }
 ul, ol { padding-left: 20px; margin: 4px 0; }
 </style>
