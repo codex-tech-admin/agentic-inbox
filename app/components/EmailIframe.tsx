@@ -4,6 +4,7 @@
 
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { emailHtmlToText } from "shared/email-text";
 
 interface EmailIframeProps {
 	body: string;
@@ -22,6 +23,22 @@ function escapeAttribute(value: string) {
 		.replace(/>/g, "&gt;");
 }
 
+function repairLegacyQuotedReplies(emailDocument: Document) {
+	for (const quote of emailDocument.querySelectorAll("blockquote")) {
+		const markup = quote.innerHTML;
+		if (!/behavior\s*:\s*url\([^)]*#default#VML|&(?:amp;)?nbsp;/i.test(markup)) {
+			continue;
+		}
+
+		const cleanText = emailHtmlToText(markup);
+		quote.replaceChildren();
+		for (const [index, line] of cleanText.split("\n").entries()) {
+			if (index > 0) quote.appendChild(emailDocument.createElement("br"));
+			quote.appendChild(emailDocument.createTextNode(line));
+		}
+	}
+}
+
 /**
  * Split a complete HTML email into its stylesheet and body portions before
  * DOMPurify flattens the document. Email generators commonly put responsive
@@ -30,6 +47,7 @@ function escapeAttribute(value: string) {
  */
 function prepareEmailHtml(body: string) {
 	const emailDocument = new DOMParser().parseFromString(body, "text/html");
+	repairLegacyQuotedReplies(emailDocument);
 	const emailStyles = Array.from(emailDocument.querySelectorAll("style"))
 		.map((style) => style.textContent || "")
 		.filter(Boolean)

@@ -10,6 +10,7 @@
  */
 import DOMPurify from "dompurify";
 import { formatQuotedDate } from "shared/dates";
+import { emailHtmlToText } from "shared/email-text";
 import type { Attachment } from "~/types";
 import { isCalendarAttachment } from "shared/calendar";
 
@@ -76,24 +77,7 @@ export function htmlToPlainText(html: string): string {
  * Strip all HTML tags from a string.
  */
 export function stripHtml(html: string): string {
-	return html.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
-}
-
-function decodeHtmlEntities(text: string): string {
-	return text
-		.replace(/&#(\d+);/g, (_match: string, code: string) =>
-			String.fromCharCode(Number(code)),
-		)
-		.replace(/&#x([0-9a-f]+);/gi, (_match: string, hex: string) =>
-			String.fromCharCode(Number.parseInt(hex, 16)),
-		)
-		.replace(/&amp;/g, "&")
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&quot;/g, '"')
-		.replace(/&#39;/g, "'")
-		.replace(/&apos;/g, "'")
-		.replace(/&nbsp;/g, " ");
+	return emailHtmlToText(html);
 }
 
 export function getSnippetText(
@@ -102,13 +86,7 @@ export function getSnippetText(
 ): string {
 	if (!snippet) return "";
 
-	const clean = decodeHtmlEntities(
-		snippet
-			.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-			.replace(/<style[^>]*>[\s\S]*/gi, "")
-			.replace(/<[^>]*>/g, " ")
-			.replace(/<[^>]*$/g, ""),
-	)
+	const clean = emailHtmlToText(snippet)
 		.replace(/\s+/g, " ")
 		.trim();
 

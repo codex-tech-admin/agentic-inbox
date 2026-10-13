@@ -103,4 +103,30 @@ describe("EmailIframe", () => {
 			"allow-top-navigation",
 		);
 	});
+
+	it("repairs Outlook artifacts in legacy quoted replies", async () => {
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+
+		await act(async () => {
+			root?.render(
+				createElement(EmailIframe, {
+					body: `<p>Reply text</p>
+						<blockquote>
+							On Tue, Oct 13, Eiman wrote:<br><br>
+							v\\:* {behavior:url(#default#VML);} .shape {behavior:url(#default#VML);}
+							Hi Raihan, Regards &amp;nbsp; &amp;nbsp; Eiman
+						</blockquote>`,
+				}),
+			);
+		});
+
+		const srcdoc = container.querySelector("iframe")?.srcdoc ?? "";
+		expect(srcdoc).toContain("Reply text");
+		expect(srcdoc).toContain("Hi Raihan, Regards Eiman");
+		expect(srcdoc).not.toContain("behavior:url");
+		expect(srcdoc).not.toContain("default#VML");
+		expect(srcdoc).not.toContain("&amp;nbsp;");
+	});
 });
