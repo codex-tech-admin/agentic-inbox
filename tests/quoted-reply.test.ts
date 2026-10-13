@@ -62,4 +62,11 @@ describe("quoted reply cleanup", () => {
 		expect(snippet).not.toContain("behavior:url");
 		expect(snippet).not.toContain("&nbsp;");
 	});
+
+	it("drops an HTML tag truncated by the server-side preview limit", () => {
+		expect(getSnippetText('<meta http-equiv="Content-Type" content="text/htm'))
+			.toBe("");
+		expect(getSnippetText('<body style="margin:0;padding:0;background:#fff'))
+			.toBe("");
+	});
 });

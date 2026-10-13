@@ -56,7 +56,8 @@ export function emailHtmlToText(html: string): string {
 		.replace(/<br\s*\/?>/gi, "\n")
 		.replace(/<\/(?:address|blockquote|div|h[1-6]|li|p|pre|table|tr)>/gi, "\n")
 		.replace(/<li(?:\s[^>]*)?>/gi, "• ")
-		.replace(/<[^>]+>/g, " ");
+		.replace(/<[^>]+>/g, " ")
+		.replace(/<[^>]*$/g, " ");
 
 	return decodeHtmlEntities(text)
 		.replace(/\u00a0/g, " ")
